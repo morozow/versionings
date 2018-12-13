@@ -35,12 +35,21 @@ function composeVersionBranchName(semver, version, branchName) {
  * @returns {string}
  */
 function generatePullRequestUrl(branch) {
-  return `${config.git.url}/pull-requests?${querystring.stringify({
+  return config.git.type === 'github'
+    ? pullRequestUrlGenerators.github(branch)
+    : pullRequestUrlGenerators.bitBucket(branch);
+}
+
+const pullRequestUrlGenerators = {
+  github: (branch) => `${config.git.url.replace('.git', '')}/compare/${config.git.pr.target}...${branch}?${querystring.stringify({
+    expand: 1,
+  })}`,
+  bitBucket: (branch) => `${config.git.url}/pull-requests?${querystring.stringify({
     create: true,
     sourceBranch: repositorySourceBranch(branch),
     targetBranch: config.git.pr.target,
-  })}`;
-}
+  })}`,
+};
 
 function preidParam(preid) {
   return preid ? `--preid=${preid}` : '';

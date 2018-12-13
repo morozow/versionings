@@ -4,6 +4,9 @@
 Implementation of versioning automation.\
 Versioning schema: **Semantic Versioning**
 
+### Install
+```npm install --global versionings```
+
 #### CLI command:
 ```versionings --semver=[<semantic-version> | patch | minor | premajor | prerelease | major ] --branch=[<version-branch-name> | any-hyphen-case-less-100-characters-string] [--push]```
 

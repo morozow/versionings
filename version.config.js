@@ -4,6 +4,7 @@
 
 module.exports = {
   git: {
+    type: 'github',
     url: 'https://github.com/morozow/versionings.git',
   },
 };
