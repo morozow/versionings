@@ -9,6 +9,7 @@ const { ANSI_FG_RED, ANSI_FG_NC, stop } = require('./utils');
 
 const defaultConfig = {
   git: {
+    type: void 0, // required
     url: void 0, // required
     branchType: {
       version: 'version',

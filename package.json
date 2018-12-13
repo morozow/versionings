@@ -22,6 +22,6 @@
   },
   "devDependencies": {
     "opn": "^5.4.0",
-    "yargs": "^12.0.2"
+    "yargs": "^12.0.5"
   }
 }
