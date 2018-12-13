@@ -7,6 +7,24 @@ Versioning schema: **Semantic Versioning**
 ### Install
 ```npm install --global versionings```
 
+### Setup
+- Create ```./version.config.js``` file in **root** project directory.
+- Set required versioning configuration settings
+    - git.platform
+        - The VCS platform. Supports: ```github```, ```bitbucket```
+    - git.url
+        - The VCS platform repository URL.
+##### ```version.config.js``` example
+```javascript
+module.exports = {
+  git: {
+    platform: 'github',
+    url: 'https://github.com/morozow/versionings.git',
+  },
+};
+```
+
+### Usage
 #### CLI command:
 ```versionings --semver=[<semantic-version> | patch | minor | premajor | prerelease | major ] --branch=[<version-branch-name> | any-hyphen-case-less-100-characters-string] [--push]```
 

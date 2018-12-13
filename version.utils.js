@@ -6,6 +6,8 @@ const querystring = require('querystring');
 
 const config = require('./config');
 
+const GITHUB_GIT_PLATFORM = 'github';
+const BITBUCKET_GIT_PLATFORM = 'bitbucket';
 const HELP_MESSAGE = '\n' +
   'versionings ' +
   `--semver=[<semantic-version> | ${Object.keys(config.package.semver).join(' | ')}] ` +
@@ -56,6 +58,8 @@ function preidParam(preid) {
 }
 
 module.exports = {
+  BITBUCKET_GIT_PLATFORM,
+  GITHUB_GIT_PLATFORM,
   HELP_MESSAGE,
   AVAILABLE_SEMVERS,
   preidParam,
