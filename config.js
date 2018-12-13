@@ -6,8 +6,9 @@ const fs = require('fs');
 const path = require('path');
 
 const { ANSI_FG_RED, ANSI_FG_NC, stop } = require('./utils');
-const { GITHUB_GIT_PLATFORM, BITBUCKET_GIT_PLATFORM } = require('./version.utils');
 
+const GITHUB_GIT_PLATFORM = 'github';
+const BITBUCKET_GIT_PLATFORM = 'bitbucket';
 const AVAILABLE_GIT_PLATFORMS = [GITHUB_GIT_PLATFORM, BITBUCKET_GIT_PLATFORM];
 
 const defaultConfig = {
