@@ -1,4 +1,4 @@
-# CLI Versioning
+# Versioning
 
 ### Overview
 Implementation of versioning automation.\
