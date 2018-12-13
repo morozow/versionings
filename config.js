@@ -76,6 +76,7 @@ const config = {
   git: {
     ...defaultConfig.git,
     url: versionConfig.git.url,
+    platform: versionConfig.git.platform,
   }
 };
 
