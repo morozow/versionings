@@ -1,6 +1,6 @@
 {
   "name": "versionings",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Versioning automation tool",
   "main": "version.js",
   "bin": {
@@ -20,7 +20,7 @@
     "type": "git",
     "url": "https://github.com/morozow/versionings.git"
   },
-  "devDependencies": {
+  "dependencies": {
     "opn": "^5.4.0",
     "yargs": "^12.0.5"
   }
