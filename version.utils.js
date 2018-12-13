@@ -35,12 +35,12 @@ function composeVersionBranchName(semver, version, branchName) {
  * @returns {string}
  */
 function generatePullRequestUrl(branch) {
-  return config.git.type === 'github'
-    ? pullRequestUrlGenerators.github(branch)
-    : pullRequestUrlGenerators.bitBucket(branch);
+  return config.git.platform === 'github'
+    ? pullRequestUrlGenerator.github(branch)
+    : pullRequestUrlGenerator.bitBucket(branch);
 }
 
-const pullRequestUrlGenerators = {
+const pullRequestUrlGenerator = {
   github: (branch) => `${config.git.url.replace('.git', '')}/compare/${config.git.pr.target}...${branch}?${querystring.stringify({
     expand: 1,
   })}`,
