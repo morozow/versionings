@@ -1,0 +1,8 @@
+# Webstorm
+.idea/*
+
+# NPM
+node_modules/
+
+# Version project configuration
+version.json
