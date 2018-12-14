@@ -8,13 +8,13 @@ Versioning schema: **Semantic Versioning**
 ```npm install --global versionings```
 
 ### Setup
-- Create ```./version.config.js``` file in **root** project directory.
+- Create ```./version.json``` file in **root** project directory.
 - Set required versioning configuration settings
     - git.platform
         - The VCS platform. Supports: ```github```, ```bitbucket```
     - git.url
         - The VCS platform repository URL.
-##### ```version.config.js``` example
+##### ```version.json``` example
 ```javascript
 module.exports = {
   git: {

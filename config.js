@@ -55,7 +55,7 @@ const defaultConfig = {
       title: 'Project',
     },
     messages: {
-      versionConfigDoesNotExist: 'Version configuration DOES NOT exist. Define: ./version.config.js file.',
+      versionConfigDoesNotExist: 'Version configuration DOES NOT exist. Define: ./version.json file.',
       undefinedGitRepositoryUrl: 'Undefined Git repository URL.',
       unavailableVersioningDirectory: 'Get back to root directory that contains project package.json.',
       unavailableSemanticVersion: 'Unavailable semantic version. Define: semantic version according to config.',
@@ -67,7 +67,7 @@ const defaultConfig = {
   }
 };
 
-const versionConfigPath = path.join(process.env.PWD, 'version.config.js');
+const versionConfigPath = path.join(process.env.PWD, 'version.json');
 if (!fs.existsSync(versionConfigPath)) {
   stop([`${ANSI_FG_RED}%s${ANSI_FG_NC}`, defaultConfig.common.messages.versionConfigDoesNotExist]);
 }
