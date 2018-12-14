@@ -9,7 +9,7 @@ const config = require('./config');
 const HELP_MESSAGE = '\n' +
   'versionings ' +
   `--semver=[<semantic-version> | ${Object.keys(config.package.semver).join(' | ')}] ` +
-  '--name=[<verion-branch-name> | any-hyphen-case-less-100-characters-string] ' +
+  '--name=[<version-branch-name> | any-hyphen-case-less-100-characters-string] ' +
   '[--push]\n';
 const AVAILABLE_SEMVERS = Object.keys(config.package.semver);
 
