@@ -15,13 +15,13 @@ Versioning schema: **Semantic Versioning**
     - git.url
         - The VCS platform repository URL.
 ##### ```version.json``` example
-```javascript
-module.exports = {
-  git: {
-    platform: 'github',
-    url: 'https://github.com/morozow/versionings.git',
-  },
-};
+```json
+{
+  "git": {
+    "platform": "github",
+    "url": "https://github.com/morozow/versionings.git"
+  }
+}
 ```
 
 ### Usage
