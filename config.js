@@ -13,7 +13,7 @@ const AVAILABLE_GIT_PLATFORMS = [GITHUB_GIT_PLATFORM, BITBUCKET_GIT_PLATFORM];
 
 const defaultConfig = {
   git: {
-    type: void 0, // required
+    platform: void 0, // required
     url: void 0, // required
     branchType: {
       version: 'version',
