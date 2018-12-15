@@ -16,7 +16,7 @@ Versioning schema: **Semantic Versioning**
         - The VCS platform repository URL.
 - Set versioning configuration settings
     - ```git.pr.target```
-        - Git Pull Request target branch: Default: ```master```
+        - The VCS Pull Request target branch: Default: ```master```
         
 ##### ```version.json``` example
 ```json
