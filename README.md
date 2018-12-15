@@ -9,11 +9,15 @@ Versioning schema: **Semantic Versioning**
 
 ### Setup
 - Create ```./version.json``` file in **root** project directory.
-- Set required versioning configuration settings
-    - git.platform
+- Set _required_ versioning configuration settings
+    - ```git.platform```
         - The VCS platform. Supports: ```github```, ```bitbucket```
-    - git.url
+    - ```git.url```
         - The VCS platform repository URL.
+- Set versioning configuration settings
+    - ```git.pr.target```
+        - Git Pull Request target branch: Default: ```master```
+        
 ##### ```version.json``` example
 ```json
 {
