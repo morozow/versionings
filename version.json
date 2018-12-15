@@ -1,6 +1,9 @@
 {
   "git": {
     "platform": "github",
-    "url": "https://github.com/morozow/versionings.git"
+    "url": "https://github.com/morozow/versionings.git",
+    "pr": {
+      "target": "develop"
+    }
   }
 }
