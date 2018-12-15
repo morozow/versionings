@@ -5,7 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const { ANSI_FG_RED, ANSI_FG_NC, stop } = require('./utils');
+const { ANSI_FG_RED, ANSI_FG_NC, stop, get } = require('./utils');
 
 const GITHUB_GIT_PLATFORM = 'github';
 const BITBUCKET_GIT_PLATFORM = 'bitbucket';
@@ -19,7 +19,7 @@ const defaultConfig = {
       version: 'version',
     },
     pr: {
-      target: 'develop',
+      target: 'master',
     },
     limits: {
       branchMaxLength: 100,
@@ -63,6 +63,7 @@ const defaultConfig = {
       incorrectVersionBranchNameLength: 'Branch name MUST have length less.',
       untrackedGitFiles: 'You have untracked git files. Commit all changes and try again.',
       unavailableGitPlatform: `Unavailable Git platform. Available platforms: ${AVAILABLE_GIT_PLATFORMS.join(', ')}`,
+      unavailableGitTargetBranch: `Unavailable Git target branch. Define: git.pr.target in ./version.json file.`,
     }
   }
 };
@@ -83,8 +84,12 @@ const config = {
   ...defaultConfig,
   git: {
     ...defaultConfig.git,
-    url: versionConfig.git.url,
-    platform: versionConfig.git.platform,
+    url: get(versionConfig, 'git.url', defaultConfig.git.url),
+    platform: get(versionConfig, 'git.platform', defaultConfig.git.platform),
+    pr: {
+      ...defaultConfig.git.pr,
+      target: get(versionConfig, 'git.pr.target', defaultConfig.git.pr.target)
+    }
   }
 };
 

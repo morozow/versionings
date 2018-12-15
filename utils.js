@@ -47,6 +47,14 @@ class Logger {
   }
 }
 
+function get(obj, path, defaultValue = void 0) {
+  let value = obj;
+  path.split('.').forEach((propName) => {
+    value = value[propName] || defaultValue;
+  });
+  return value;
+}
+
 module.exports = {
   EMPTY_LINE,
   ANSI_FG_RED,
@@ -57,4 +65,5 @@ module.exports = {
   consoleLogErrors,
   stop,
   Logger,
+  get,
 };
