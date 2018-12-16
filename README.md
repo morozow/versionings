@@ -30,7 +30,7 @@ Versioning schema: **Semantic Versioning**
 
 ### Usage
 #### CLI command:
-```versionings --semver=[<semantic-version> | patch | prepatch | minor | preminor | premajor | prerelease | major] --name=[<version-branch-name> | any-hyphen-case-less-100-characters-string] [--push]```
+```versionings --semver=[<semantic-version> | patch | prepatch | minor | preminor | premajor | prerelease | major] --branch=[<version-branch-name> | any-hyphen-case-less-100-characters-string] [--push]```
 
 #### Parameters
 - **semver**: any semantic version degree
