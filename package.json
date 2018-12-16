@@ -1,6 +1,6 @@
 {
   "name": "versionings",
-  "version": "0.0.17",
+  "version": "0.0.18",
   "description": "Versioning automation tool",
   "main": "version.js",
   "bin": {
@@ -15,7 +15,8 @@
     "versioning"
   ],
   "author": "Raman Marozau <engineer.morozov@gmail.com>",
-  "license": "ISC",
+  "license": "MIT",
+  "homepage": "https://github.com/morozow/versionings",
   "repository": {
     "type": "git",
     "url": "https://github.com/morozow/versionings.git"
