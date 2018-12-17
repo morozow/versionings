@@ -39,7 +39,7 @@ const { branch, semver, push, preid } = argv;
 const { version: currentVersion } = JSON.parse(fs.readFileSync('./package.json', 'utf8'));
 
 if (!currentVersion) {
-  stop([`${ANSI_FG_YELLOW}%s${ANSI_FG_NC}`, config.common.messages.unavailableVersioningDirectory]);
+  stop([`${ANSI_FG_YELLOW}%s${ANSI_FG_NC}`, `${config.common.messages.unavailableVersioningDirectory} ${EMPTY_LINE}`]);
 } else if (!semver || !AVAILABLE_SEMVERS.includes(semver)) {
   stop([`${ANSI_FG_RED}%s${ANSI_FG_NC}`, `${config.common.messages.unavailableSemanticVersion} ${HELP_MESSAGE}`]);
 } else if (!branch || branch === true) { // true is an empty --branch parameter
@@ -54,11 +54,11 @@ exec('git branch -a', execAction((branches) => {
     .split(EMPTY_LINE)
     .some((branch) => branch === config.git.pr.target);
   if (!isTargetBranchExists) {
-    stop([`${ANSI_FG_RED}%s${ANSI_FG_NC}`, config.common.messages.unavailableGitTargetBranch]);
+    stop([`${ANSI_FG_RED}%s${ANSI_FG_NC}`, `${config.common.messages.unavailableGitTargetBranch} ${EMPTY_LINE}`]);
   }
   exec('git status --porcelain', execAction((changes) => {
     if (changes) {
-      stop([`${ANSI_FG_YELLOW}%s${ANSI_FG_NC}`, config.common.messages.untrackedGitFiles]);
+      stop([`${ANSI_FG_YELLOW}%s${ANSI_FG_NC}`, `${config.common.messages.untrackedGitFiles} ${EMPTY_LINE}`]);
     }
     exec(`npm version ${semver} -m "${semverMessage(semver)}" ${preidParam(preid)}`, execAction((_version) => {
       const version = _version.trim(); // remove new line of the version number string
