@@ -25,6 +25,7 @@ const {
   ANSI_FG_NC,
   ANSI_FG_YELLOW,
   ANSI_FG_RED,
+  CURRENT_BRANCH,
   Logger,
   execAction,
   stop,
@@ -52,7 +53,7 @@ exec('git branch -a', execAction((branches) => {
   const isTargetBranchExists = branches
     .trim()
     .split(EMPTY_LINE)
-    .some((branch) => branch === config.git.pr.target);
+    .some((branch) => branch.replace(CURRENT_BRANCH, '').trim() === config.git.pr.target);
   if (!isTargetBranchExists) {
     stop([`${ANSI_FG_RED}%s${ANSI_FG_NC}`, `${config.common.messages.unavailableGitTargetBranch} ${EMPTY_LINE}`]);
   }
