@@ -9,6 +9,7 @@ const ANSI_FG_YELLOW = '\x1b[33m';
 const ANSI_FG_GREEN = '\x1b[32m';
 const ANSI_FG_NC = '\x1b[0m'; // no color
 
+const CURRENT_BRANCH = '*';
 
 function execAction(callback, exitConditions = { error: true, stderr: true }) {
   return (error, response, stderr) => {
@@ -61,6 +62,7 @@ module.exports = {
   ANSI_FG_YELLOW,
   ANSI_FG_GREEN,
   ANSI_FG_NC,
+  CURRENT_BRANCH,
   execAction,
   consoleLogErrors,
   stop,
