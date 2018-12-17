@@ -6,11 +6,13 @@ const querystring = require('querystring');
 
 const config = require('./config');
 
-const HELP_MESSAGE = '\n' +
+const { EMPTY_LINE } = require('./utils');
+
+const HELP_MESSAGE = `${EMPTY_LINE}` +
   'versionings ' +
   `--semver=[<semantic-version> | ${Object.keys(config.package.semver).join(' | ')}] ` +
   '--name=[<version-branch-name> | any-hyphen-case-less-100-characters-string] ' +
-  '[--push]\n';
+  `[--push]${EMPTY_LINE}`;
 const AVAILABLE_SEMVERS = Object.keys(config.package.semver);
 
 const repositorySourceBranch = (branch) => `refs/heads/${branch}`;
