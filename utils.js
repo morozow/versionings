@@ -10,6 +10,7 @@ const ANSI_FG_GREEN = '\x1b[32m';
 const ANSI_FG_NC = '\x1b[0m'; // no color
 
 const CURRENT_BRANCH = '*';
+const SSH_URL_MARKER = 'git@';
 
 function execAction(callback, exitConditions = { error: true, stderr: true }) {
   return (error, response, stderr) => {
@@ -63,6 +64,7 @@ module.exports = {
   ANSI_FG_GREEN,
   ANSI_FG_NC,
   CURRENT_BRANCH,
+  SSH_URL_MARKER,
   execAction,
   consoleLogErrors,
   stop,

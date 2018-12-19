@@ -6,7 +6,7 @@ const querystring = require('querystring');
 
 const config = require('./config');
 
-const { EMPTY_LINE } = require('./utils');
+const { EMPTY_LINE, SSH_URL_MARKER } = require('./utils');
 
 const HELP_MESSAGE = `${EMPTY_LINE}` +
   'versionings ' +
@@ -14,21 +14,35 @@ const HELP_MESSAGE = `${EMPTY_LINE}` +
   '--name=[<version-branch-name> | any-hyphen-case-less-100-characters-string] ' +
   `[--push]${EMPTY_LINE}`;
 const AVAILABLE_SEMVERS = Object.keys(config.package.semver);
+const GIT_URL_REG_EX = /git@([\w\.]+):([\w\.\/-]+)/gi;
 
 const repositorySourceBranch = (branch) => `refs/heads/${branch}`;
 const semverMessage = (semver) =>
   config.git.commit.message.semver[semver]
     || 'Read documentation and try to use versioning tool according to the standard.';
 
+const cleanGitUrl = (url) => url.replace('.git', '');
+
+function composePullRequestUrl(httpsUrl, { https }) {
+  if (https) {
+    return cleanGitUrl(httpsUrl);
+  } else {
+    const urlMatch = GIT_URL_REG_EX.exec(httpsUrl);
+    const platformDomain = urlMatch[1];
+    const repositoryPath = urlMatch[2];
+    return `https://${platformDomain}/${cleanGitUrl(repositoryPath)}`;
+  }
+}
+
 /**
  * Composition of the branch name for the next version.
  * @param semver Semantic version: patch | minor | major | premajor | release
  * @param version Version: Major.Minor.Patch[-Prerelease]
- * @param branchName Hyphen case branch name. Length: less 100 characters
+ * @param comment Hyphen case branch comment. Length: less 100 characters
  * @returns {string}
  */
-function composeVersionBranchName(semver, version, branchName) {
-  return `${config.git.branchType.version}/${config.package.semver[semver]}/${version}-${branchName}`;
+function composeVersionBranchName(semver, version, comment) {
+  return `${config.git.branchType.version}/${config.package.semver[semver]}/${version}-${comment}`;
 }
 
 /**
@@ -43,14 +57,18 @@ function generatePullRequestUrl(branch) {
 }
 
 const pullRequestUrlGenerator = {
-  github: (branch) => `${config.git.url.replace('.git', '')}/compare/${config.git.pr.target}...${branch}?${querystring.stringify({
-    expand: 1,
-  })}`,
-  bitBucket: (branch) => `${config.git.url}/pull-requests?${querystring.stringify({
-    create: true,
-    sourceBranch: repositorySourceBranch(branch),
-    targetBranch: config.git.pr.target,
-  })}`,
+  github: (branch) => {
+    const url = composePullRequestUrl(config.git.url, { https: !config.git.url.includes(SSH_URL_MARKER) });
+    return `${url}/compare/${config.git.pr.target}...${branch}?${querystring.stringify({ expand: 1 })}`;
+  },
+  bitBucket: (branch) => {
+    const url = composePullRequestUrl(config.git.url, { https: !config.git.url.includes(SSH_URL_MARKER) });
+    return `${url}/pull-requests/new?${querystring.stringify({
+      source: repositorySourceBranch(branch),
+      dest: config.git.pr.target,
+      t: 1,
+    })}`;
+  },
 };
 
 function preidParam(preid) {
