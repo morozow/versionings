@@ -1,7 +1,7 @@
 # Versionings
 
 ### Overview
-Implementation of versioning automation.\
+Implementation of [versioning automation](https://www.reddit.com/r/opensource/comments/aaewcn/versioning_automation_management_tool/).\
 Versioning schema: **Semantic Versioning**
 
 ### Install
