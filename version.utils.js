@@ -27,9 +27,7 @@ function composePullRequestUrl(httpsUrl, { https }) {
   if (https) {
     return cleanGitUrl(httpsUrl);
   } else {
-    const urlMatch = GIT_URL_REG_EX.exec(httpsUrl);
-    const platformDomain = urlMatch[1];
-    const repositoryPath = urlMatch[2];
+    const [_, platformDomain, repositoryPath] = GIT_URL_REG_EX.exec(httpsUrl);
     return `https://${platformDomain}/${cleanGitUrl(repositoryPath)}`;
   }
 }
