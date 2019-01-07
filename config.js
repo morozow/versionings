@@ -5,7 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const { ANSI_FG_RED, ANSI_FG_NC, stop, get } = require('./utils');
+const { ANSI_FG_RED, ANSI_FG_NC, EMPTY_LINE, stop, get } = require('./utils');
 
 const GITHUB_GIT_PLATFORM = 'github';
 const BITBUCKET_GIT_PLATFORM = 'bitbucket';
@@ -56,28 +56,28 @@ const defaultConfig = {
     },
     messages: {
       versionConfigDoesNotExist: 'Version configuration DOES NOT exist. Define: ./version.json file.',
-      undefinedGitRepositoryUrl: 'Undefined Git repository URL.',
-      unavailableVersioningDirectory: 'Get back to root directory that contains project package.json.',
-      unavailableSemanticVersion: 'Unavailable semantic version. Define: semantic version according to config.',
-      undefinedVersionBranchName: 'Undefined version branch name.',
-      incorrectVersionBranchNameLength: 'Branch name MUST have length less.',
+      undefinedGitRepositoryUrl: 'Git repository URL is undefined. Define: correct git.url in ./version.json file.',
+      unavailableVersioningDirectory: 'Get back to the root directory that contains project package.json.',
+      unavailableSemanticVersion: 'Semantic version is unavailable. Define correct --semver CLI parameter.',
+      undefinedVersionBranchName: 'Version branch name is undefined. Define correct --branch CLI parameter.',
+      incorrectVersionBranchNameLength: 'Correct --branch CLI parameters MUST have length less',
       untrackedGitFiles: 'You have untracked git files. Commit all changes and try again.',
-      unavailableGitPlatform: `Unavailable Git platform. Available platforms: ${AVAILABLE_GIT_PLATFORMS.join(', ')}`,
-      unavailableGitTargetBranch: `Unavailable Git target branch. Define: git.pr.target in ./version.json file.`,
+      unavailableGitPlatform: `Git platform is unavailable. Define correct git.platform in ./version.json file. Available platforms: ${AVAILABLE_GIT_PLATFORMS.join(', ')}.`,
+      unavailableGitTargetBranch: `Git target branch is unavailable. Define: correct git.pr.target in ./version.json file.`,
     }
   }
 };
 
 const versionConfigPath = path.join(process.env.PWD, 'version.json');
 if (!fs.existsSync(versionConfigPath)) {
-  stop([`${ANSI_FG_RED}%s${ANSI_FG_NC}`, defaultConfig.common.messages.versionConfigDoesNotExist]);
+  stop([`${ANSI_FG_RED}%s${ANSI_FG_NC}`, `${defaultConfig.common.messages.versionConfigDoesNotExist} ${EMPTY_LINE}`]);
 }
 const versionConfig = require(versionConfigPath);
 if (!versionConfig.git.url) {
-  stop([`${ANSI_FG_RED}%s${ANSI_FG_NC}`, defaultConfig.common.messages.undefinedGitRepositoryUrl]);
+  stop([`${ANSI_FG_RED}%s${ANSI_FG_NC}`, `${defaultConfig.common.messages.undefinedGitRepositoryUrl} ${EMPTY_LINE}`]);
 }
 if (!AVAILABLE_GIT_PLATFORMS.includes(versionConfig.git.platform)) {
-  stop([`${ANSI_FG_RED}%s${ANSI_FG_NC}`, defaultConfig.common.messages.unavailableGitPlatform]);
+  stop([`${ANSI_FG_RED}%s${ANSI_FG_NC}`, `${defaultConfig.common.messages.unavailableGitPlatform} ${EMPTY_LINE}`]);
 }
 
 const config = {

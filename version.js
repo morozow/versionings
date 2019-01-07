@@ -36,7 +36,7 @@ const {
  * versionings --semver=[<semantic-version> | patch | prepatch | minor | preminor | premajor | prerelease | major] --branch=[<version-branch-name> | any-hyphen-case-less-100-characters-string] [--push]
  */
 
-const { branch, semver, push, preid } = argv;
+const { semver, branch, push, preid } = argv;
 const { version: currentVersion } = JSON.parse(fs.readFileSync('./package.json', 'utf8'));
 
 if (!currentVersion) {
