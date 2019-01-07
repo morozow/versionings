@@ -14,23 +14,8 @@ const SSH_URL_MARKER = 'git@';
 
 function execAction(callback, exitConditions = { error: true, stderr: true }) {
   return (error, response, stderr) => {
-    consoleLogErrors(error, stderr, exitConditions);
+    Logger.error(error, stderr, exitConditions);
     callback(response, stderr, error);
-  }
-}
-
-function consoleLogErrors(error, stderr, exitConditions) {
-  if (error !== null) {
-    Logger.stack([[`${ANSI_FG_RED}%s${ANSI_FG_NC}`, `Error: ${error}`]]);
-    if (exitConditions.error) {
-      process.exit(0)
-    }
-  }
-  if (stderr) {
-    Logger.stack([[`%s`, stderr]]);
-    if (exitConditions.stderr) {
-      process.exit(0);
-    }
   }
 }
 
@@ -46,6 +31,21 @@ class Logger {
     logStack.forEach((log) => {
       console.log(...log);
     });
+  }
+
+  static error(error, stderr, exitConditions = { error: true, stderr: true }) {
+    if (error !== null) {
+      Logger.stack([[`${ANSI_FG_RED}%s${ANSI_FG_NC}`, `Error: ${error}`]]);
+      if (exitConditions.error) {
+        process.exit(0)
+      }
+    }
+    if (stderr) {
+      Logger.stack([[`%s`, stderr]]);
+      if (exitConditions.stderr) {
+        process.exit(0);
+      }
+    }
   }
 }
 
@@ -66,7 +66,6 @@ module.exports = {
   CURRENT_BRANCH,
   SSH_URL_MARKER,
   execAction,
-  consoleLogErrors,
   stop,
   Logger,
   get,

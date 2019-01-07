@@ -11,7 +11,7 @@ const { EMPTY_LINE, SSH_URL_MARKER } = require('./utils');
 const HELP_MESSAGE = `${EMPTY_LINE}` +
   'versionings ' +
   `--semver=[<semantic-version> | ${Object.keys(config.package.semver).join(' | ')}] ` +
-  '--name=[<version-branch-name> | any-hyphen-case-less-100-characters-string] ' +
+  '--branch=[<version-branch-name> | any-hyphen-case-less-100-characters-string] ' +
   `[--push]${EMPTY_LINE}`;
 const AVAILABLE_SEMVERS = Object.keys(config.package.semver);
 const GIT_URL_REG_EX = /git@([\w\.]+):([\w\.\/-]+)/gi;
@@ -27,9 +27,7 @@ function composePullRequestUrl(httpsUrl, { https }) {
   if (https) {
     return cleanGitUrl(httpsUrl);
   } else {
-    const urlMatch = GIT_URL_REG_EX.exec(httpsUrl);
-    const platformDomain = urlMatch[1];
-    const repositoryPath = urlMatch[2];
+    const [_, platformDomain, repositoryPath] = GIT_URL_REG_EX.exec(httpsUrl);
     return `https://${platformDomain}/${cleanGitUrl(repositoryPath)}`;
   }
 }
