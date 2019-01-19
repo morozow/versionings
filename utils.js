@@ -1,8 +1,9 @@
 /*
- * Raman Marozau <engineer.morozov@gmail.com>, 2018
+ * Versioning automation tool, 2018-present
  */
 
 const EMPTY_LINE = '\n';
+const EMPTY_STRING = '';
 
 const ANSI_FG_RED = '\x1b[31m';
 const ANSI_FG_YELLOW = '\x1b[33m';
@@ -59,6 +60,7 @@ function get(obj, path, defaultValue = void 0) {
 
 module.exports = {
   EMPTY_LINE,
+  EMPTY_STRING,
   ANSI_FG_RED,
   ANSI_FG_YELLOW,
   ANSI_FG_GREEN,
