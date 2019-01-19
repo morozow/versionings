@@ -20,6 +20,7 @@ const {
   composeVersionBranchName,
   composeVersionTagName,
   semverMessage,
+  semverNpmMessage,
   generatePullRequestUrl,
   resetVersion,
 } = require('./version.utils');
@@ -72,7 +73,7 @@ exec('git remote --verbose', execAction((remotes) => {
     if (changes) {
       stop([`${ANSI_FG_YELLOW}%s${ANSI_FG_NC}`, `${config.common.messages.untrackedGitFiles} ${EMPTY_LINE}`]);
     }
-    exec(`npm --no-git-tag-version version ${semver} --message "${semverMessage(semver)}" ${preidParam(preid)}`, execAction((_version) => {
+    exec(`npm --no-git-tag-version version ${semver} --message "${semverNpmMessage(semver, branch)}" ${preidParam(preid)}`, execAction((_version) => {
       const version = _version.trim(); // remove new line of the version number string
       const tagName = composeVersionTagName(semver, version, branch);
       exec('git tag', execAction((tags) => {
@@ -107,8 +108,8 @@ exec('git remote --verbose', execAction((remotes) => {
             });
           }
           exec(`git checkout -b ${versionBranchName}`, execAction(() => {
-            exec(`git tag --annotate ${tagName} --message "${semverMessage(semver)}"`, execAction(() => {
-              exec(`git commit --all --message "${semverMessage(semver)}"`, execAction(() => {
+            exec(`git tag --annotate ${tagName} --message "${semverMessage(semver, version)}"`, execAction(() => {
+              exec(`git commit --all --message "${semverMessage(semver, version)}"`, execAction(() => {
                 if (!push) {
                   Logger.stack([
                     [`Version updated %s`, `${ANSI_FG_GREEN}locally${ANSI_FG_NC}.`],
