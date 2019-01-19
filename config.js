@@ -1,5 +1,5 @@
 /*
- * Raman Marozau <engineer.morozov@gmail.com>, 2018
+ * Versioning automation tool, 2018-present
  */
 
 const fs = require('fs');
@@ -22,7 +22,7 @@ const defaultConfig = {
       target: 'master',
     },
     limits: {
-      branchMaxLength: 100,
+      branchMaxCommentLength: 96,
     },
     remote: 'origin',
     commit: {
@@ -51,19 +51,22 @@ const defaultConfig = {
     }
   },
   common: {
-    project: {
-      title: 'Project',
-    },
     messages: {
-      versionConfigDoesNotExist: 'Version configuration DOES NOT exist. Define: ./version.json file.',
-      undefinedGitRepositoryUrl: 'Git repository URL is undefined. Define: correct git.url in ./version.json file.',
+      versionConfigDoesNotExist: 'Version configuration DOES NOT exist. Define ./version.json file.',
+      undefinedGitRepositoryUrl: 'Git repository URL is undefined. Define correct git.url in ./version.json file.',
       unavailableVersioningDirectory: 'Get back to the root directory that contains project package.json.',
       unavailableSemanticVersion: 'Semantic version is unavailable. Define correct --semver CLI parameter.',
       undefinedVersionBranchName: 'Version branch name is undefined. Define correct --branch CLI parameter.',
-      incorrectVersionBranchNameLength: 'Correct --branch CLI parameters MUST have length less',
-      untrackedGitFiles: 'You have untracked git files. Commit all changes and try again.',
+      incorrectVersionBranchNameLength: 'Correct --branch CLI parameter MUST have length less',
+      incorrectVersionBranchNameCharactersDashes: 'Correct --branch CLI parameter MUST NOT contain multi dashes, "--".',
+      versionBranchAlreadyExists: 'Version branch already exists.',
+      untrackedGitFiles: 'You have untracked git files. Commit changes and try again.',
       unavailableGitPlatform: `Git platform is unavailable. Define correct git.platform in ./version.json file. Available platforms: ${AVAILABLE_GIT_PLATFORMS.join(', ')}.`,
-      unavailableGitTargetBranch: `Git target branch is unavailable. Define: correct git.pr.target in ./version.json file.`,
+      unavailableGitTargetBranch: `Git target branch is unavailable. Define correct git.pr.target in ./version.json file.`,
+      versionAlreadyExists: 'Version number already exists.',
+      versionAlreadyExistsTag: 'Version number already exists. Pay attention to git version tags.',
+      versionAlreadyExistsBranch: 'Version number already exists. Pay attention to git version branches.',
+      incorrectGitRemote: 'Git remote is unavailable. Define correct config git.url, local Git remote.',
     }
   }
 };

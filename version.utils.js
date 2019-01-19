@@ -1,12 +1,13 @@
 /*
- * Raman Marozau <engineer.morozov@gmail.com>, 2018
+ * Versioning automation tool, 2018-present
  */
 
+const { execSync } = require('child_process');
 const querystring = require('querystring');
 
 const config = require('./config');
 
-const { EMPTY_LINE, SSH_URL_MARKER } = require('./utils');
+const { EMPTY_LINE, SSH_URL_MARKER, ANSI_FG_RED, ANSI_FG_NC, stop } = require('./utils');
 
 const HELP_MESSAGE = `${EMPTY_LINE}` +
   'versionings ' +
@@ -15,6 +16,8 @@ const HELP_MESSAGE = `${EMPTY_LINE}` +
   `[--push]${EMPTY_LINE}`;
 const AVAILABLE_SEMVERS = Object.keys(config.package.semver);
 const GIT_URL_REG_EX = /git@([\w\.]+):([\w\.\/-]+)/gi;
+const DOUBLE_DASH_SYMBOL = '--'; // Only tag name MUST contain double dash separator
+const SLASH_SYMBOL = '/';
 
 const repositorySourceBranch = (branch) => `refs/heads/${branch}`;
 const semverMessage = (semver) =>
@@ -34,13 +37,24 @@ function composePullRequestUrl(httpsUrl, { https }) {
 
 /**
  * Composition of the branch name for the next version.
- * @param semver Semantic version: patch | minor | major | premajor | release
+ * @param semver Semantic version: patch | prepatch | minor | preminor | premajor | prerelease | major
  * @param version Version: Major.Minor.Patch[-Prerelease]
  * @param comment Hyphen case branch comment. Length: less 100 characters
  * @returns {string}
  */
 function composeVersionBranchName(semver, version, comment) {
-  return `${config.git.branchType.version}/${config.package.semver[semver]}/${version}-${comment}`;
+  return `${config.git.branchType.version}${SLASH_SYMBOL}${config.package.semver[semver]}${SLASH_SYMBOL}${version}${SLASH_SYMBOL}${comment}`;
+}
+
+/**
+ * Composition of the tag name for the next version.
+ * @param semver Semantic version: patch | minor | major | premajor | release
+ * @param version Version: Major.Minor.Patch[-Prerelease]
+ * @param comment Hyphen case branch comment. Length: less 100 characters
+ * @returns {string}
+ */
+function composeVersionTagName(semver, version, comment) {
+  return `${version}${DOUBLE_DASH_SYMBOL}${comment}`;
 }
 
 /**
@@ -73,11 +87,25 @@ function preidParam(preid) {
   return preid ? `--preid=${preid}` : '';
 }
 
+function resetVersion(callback) {
+  try {
+    execSync('git reset --hard');
+  } catch (e) {
+    stop([`${ANSI_FG_RED}%s${ANSI_FG_NC}`, `${e} ${EMPTY_LINE}`]);
+  } finally {
+    callback();
+  }
+}
+
 module.exports = {
+  DOUBLE_DASH_SYMBOL,
+  SLASH_SYMBOL,
   HELP_MESSAGE,
   AVAILABLE_SEMVERS,
   preidParam,
+  composeVersionTagName,
   semverMessage,
   composeVersionBranchName,
   generatePullRequestUrl,
+  resetVersion,
 };
