@@ -20,9 +20,11 @@ const DOUBLE_DASH_SYMBOL = '--'; // Only tag name MUST contain double dash separ
 const SLASH_SYMBOL = '/';
 
 const repositorySourceBranch = (branch) => `refs/heads/${branch}`;
-const semverMessage = (semver) =>
-  config.git.commit.message.semver[semver]
+const semverMessage = (semver, version) =>
+  config.git.commit.message.semver[semver].replace(/v%s/g, version)
     || 'Read documentation and try to use versioning tool according to the standard.';
+const semverNpmMessage = (semver, branch) =>
+  `Version: ${config.package.semver[semver]}. Comment: ${branch}.`;
 
 const cleanGitUrl = (url) => url.replace('.git', '');
 
@@ -103,6 +105,7 @@ module.exports = {
   HELP_MESSAGE,
   AVAILABLE_SEMVERS,
   preidParam,
+  semverNpmMessage,
   composeVersionTagName,
   semverMessage,
   composeVersionBranchName,
