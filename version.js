@@ -50,8 +50,6 @@ if (!currentVersion) {
   stop([`${ANSI_FG_RED}%s${ANSI_FG_NC}`, `${config.common.messages.unavailableSemanticVersion} ${HELP_MESSAGE}`]);
 } else if (!branch || branch === true) { // true is an empty --branch parameter
   stop([`${ANSI_FG_RED}%s${ANSI_FG_NC}`, `${config.common.messages.undefinedVersionBranchName} ${HELP_MESSAGE}`]);
-} else if (branch.length >= config.git.limits.branchMaxLength) {
-  stop([`${ANSI_FG_RED}%s${ANSI_FG_NC}`, `${config.common.messages.incorrectVersionBranchNameLength} ${config.git.limits.branchMaxLength} characters. ${HELP_MESSAGE}`]);
 } else if (branch.length >= config.git.limits.branchMaxCommentLength) {
   stop([`${ANSI_FG_RED}%s${ANSI_FG_NC}`, `${config.common.messages.incorrectVersionBranchNameLength} ${config.git.limits.branchMaxCommentLength} characters. ${HELP_MESSAGE}`]);
 } else if (branch.match(/-{2,}/g)) {
