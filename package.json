@@ -1,6 +1,6 @@
 {
   "name": "versionings",
-  "version": "0.1.0-alfa.3",
+  "version": "0.1.0-alfa.4",
   "description": "Versioning automation tool",
   "main": "version.js",
   "bin": {
