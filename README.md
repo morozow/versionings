@@ -8,7 +8,7 @@ Versioning schema: **Semantic Versioning**
 ```npm install --global versionings```
 
 ### Setup
-- Create ```./version.json``` file in **root** project directory.
+- Create ```./version.json``` file in the **root** project directory.
 - Set _required_ versioning configuration settings
     - ```git.platform```
         - The VCS platform. Supports: ```github```, ```bitbucket```
