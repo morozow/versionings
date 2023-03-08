@@ -71,7 +71,7 @@ const defaultConfig = {
   }
 };
 
-const versionConfigPath = path.join(process.env.PWD, 'version.json');
+const versionConfigPath = path.join(process.cwd(), 'version.json');
 if (!fs.existsSync(versionConfigPath)) {
   stop([`${ANSI_FG_RED}%s${ANSI_FG_NC}`, `${defaultConfig.common.messages.versionConfigDoesNotExist} ${EMPTY_LINE}`]);
 }
