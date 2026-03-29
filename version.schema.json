@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["git"],
+  "properties": {
+    "git": {
+      "type": "object",
+      "required": ["platform", "url"],
+      "properties": {
+        "platform": { "type": "string", "enum": ["github", "bitbucket"] },
+        "url": { "type": "string", "minLength": 1, "maxLength": 2048 },
+        "pr": {
+          "type": "object",
+          "properties": {
+            "target": { "type": "string", "minLength": 1, "maxLength": 256 }
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}
