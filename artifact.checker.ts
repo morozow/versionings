@@ -1,26 +1,26 @@
 /* Versioning automation tool, 2018-present */
 
-const { EXIT_CODES, VersioningsError } = require('./errors');
+import { EXIT_CODES, VersioningsError } from './errors';
+import { Executor } from './executor';
+
+export interface CheckUniquenessOpts {
+  tagName: string;
+  branchName: string;
+  push: boolean;
+  remote?: string;
+}
+
+export interface ArtifactChecker {
+  checkUniqueness(opts: CheckUniquenessOpts): Promise<void>;
+}
 
 /**
- * @param {Object} executor — executor instance with run(cmd) method
- * @returns {Object} — { checkUniqueness(opts): Promise<void> }
+ * @param executor — executor instance with run(cmd) method
+ * @returns { checkUniqueness(opts): Promise<void> }
  */
-function createArtifactChecker(executor) {
+export function createArtifactChecker(executor: Executor): ArtifactChecker {
   return {
-    /**
-     * Checks that the given tag and branch names do not already exist
-     * locally (and remotely when push is true). Throws on first conflict.
-     *
-     * @param {Object} opts
-     * @param {string} opts.tagName — full tag name to check
-     * @param {string} opts.branchName — full branch name to check
-     * @param {boolean} opts.push — whether to also check remote artifacts
-     * @param {string} [opts.remote='origin'] — remote name
-     * @returns {Promise<void>}
-     * @throws {VersioningsError} EXIT_CODES.ARTIFACT_CONFLICT on conflict
-     */
-    async checkUniqueness({ tagName, branchName, push, remote }) {
+    async checkUniqueness({ tagName, branchName, push, remote }: CheckUniquenessOpts): Promise<void> {
       const remoteName = remote || 'origin';
 
       // 1. Check local tags — exact match
@@ -39,7 +39,7 @@ function createArtifactChecker(executor) {
       const branchResult = await executor.run('git branch --list');
       const localBranches = branchResult.stdout
         .split(/\r?\n/)
-        .map(function (line) { return line.replace(/^\*?\s*/, ''); })
+        .map(function (line: string) { return line.replace(/^\*?\s*/, ''); })
         .filter(Boolean);
 
       for (const name of localBranches) {
@@ -60,7 +60,6 @@ function createArtifactChecker(executor) {
         );
         const remoteTagLines = remoteTagResult.stdout.split(/\r?\n/).filter(Boolean);
         for (const line of remoteTagLines) {
-          // Each line: "<hash>\trefs/tags/<name>" — ignore ^{} dereferenced lines
           const match = line.match(/\trefs\/tags\/(.+)$/);
           if (!match) continue;
           const refName = match[1];
@@ -80,7 +79,6 @@ function createArtifactChecker(executor) {
         );
         const remoteHeadLines = remoteHeadResult.stdout.split(/\r?\n/).filter(Boolean);
         for (const line of remoteHeadLines) {
-          // Each line: "<hash>\trefs/heads/<name>"
           const match = line.match(/\trefs\/heads\/(.+)$/);
           if (!match) continue;
           if (match[1] === branchName) {
@@ -95,5 +93,3 @@ function createArtifactChecker(executor) {
     },
   };
 }
-
-module.exports = { createArtifactChecker };

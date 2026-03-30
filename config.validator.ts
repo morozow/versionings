@@ -2,16 +2,92 @@
  * Versioning automation tool, 2018-present
  */
 
-const fs = require('fs');
-const Ajv = require('ajv');
+import * as fs from 'fs';
+import Ajv from 'ajv';
 
-const { EXIT_CODES, VersioningsError } = require('./errors');
+import { EXIT_CODES, VersioningsError } from './errors';
 
 const schema = require('./version.schema.json');
 
-const AVAILABLE_GIT_PLATFORMS = ['github', 'bitbucket'];
+const AVAILABLE_GIT_PLATFORMS: string[] = ['github', 'bitbucket'];
 
-const defaultConfig = {
+interface GitPrConfig {
+  target: string;
+}
+
+interface GitLimitsConfig {
+  branchMaxCommentLength: number;
+}
+
+interface GitCommitSemverMessages {
+  prepatch: string;
+  patch: string;
+  preminor: string;
+  minor: string;
+  premajor: string;
+  major: string;
+  prerelease: string;
+}
+
+interface GitCommitConfig {
+  message: {
+    semver: GitCommitSemverMessages;
+  };
+}
+
+interface GitBranchTypeConfig {
+  version: string;
+}
+
+interface GitConfig {
+  platform: string | undefined;
+  url: string | undefined;
+  branchType: GitBranchTypeConfig;
+  pr: GitPrConfig;
+  limits: GitLimitsConfig;
+  remote: string;
+  commit: GitCommitConfig;
+}
+
+interface PackageSemverConfig {
+  patch: string;
+  prepatch: string;
+  minor: string;
+  preminor: string;
+  premajor: string;
+  prerelease: string;
+  major: string;
+}
+
+interface CommonMessages {
+  versionConfigDoesNotExist: string;
+  undefinedGitRepositoryUrl: string;
+  unavailableVersioningDirectory: string;
+  unavailableSemanticVersion: string;
+  undefinedVersionBranchName: string;
+  incorrectVersionBranchNameLength: string;
+  incorrectVersionBranchNameCharactersDashes: string;
+  versionBranchAlreadyExists: string;
+  untrackedGitFiles: string;
+  unavailableGitPlatform: string;
+  unavailableGitTargetBranch: string;
+  versionAlreadyExists: string;
+  versionAlreadyExistsTag: string;
+  versionAlreadyExistsBranch: string;
+  incorrectGitRemote: string;
+}
+
+export interface VersioningsConfig {
+  git: GitConfig;
+  package: {
+    semver: PackageSemverConfig;
+  };
+  common: {
+    messages: CommonMessages;
+  };
+}
+
+const defaultConfig: VersioningsConfig = {
   git: {
     platform: void 0,
     url: void 0,
@@ -74,11 +150,11 @@ const defaultConfig = {
 /**
  * Loads, validates, and merges version.json configuration.
  *
- * @param {string} configPath — path to version.json
- * @returns {Object} — validated and merged config
- * @throws {VersioningsError} — EXIT_CODES.CONFIG_ERROR
+ * @param configPath — path to version.json
+ * @returns validated and merged config
+ * @throws VersioningsError — EXIT_CODES.CONFIG_ERROR
  */
-function loadAndValidateConfig(configPath) {
+export function loadAndValidateConfig(configPath: string): VersioningsConfig {
   // 1. Check file existence
   if (!fs.existsSync(configPath)) {
     throw new VersioningsError(
@@ -89,10 +165,10 @@ function loadAndValidateConfig(configPath) {
   }
 
   // 2. Parse JSON
-  let raw;
+  let raw: string;
   try {
     raw = fs.readFileSync(configPath, 'utf8');
-  } catch (err) {
+  } catch (err: any) {
     throw new VersioningsError(
       EXIT_CODES.CONFIG_ERROR,
       `Cannot read configuration file: ${err.message}`,
@@ -100,11 +176,11 @@ function loadAndValidateConfig(configPath) {
     );
   }
 
-  let versionConfig;
+  let versionConfig: any;
   try {
     versionConfig = JSON.parse(raw);
-  } catch (err) {
-    const details = { parseError: err.message };
+  } catch (err: any) {
+    const details: Record<string, any> = { parseError: err.message };
     if (typeof err.message === 'string') {
       const posMatch = err.message.match(/position\s+(\d+)/i);
       if (posMatch) {
@@ -127,7 +203,7 @@ function loadAndValidateConfig(configPath) {
   const valid = validate(versionConfig);
 
   if (!valid) {
-    const errors = validate.errors.map((err) => ({
+    const errors = validate.errors!.map((err) => ({
       path: err.instancePath || '/',
       message: err.message,
       params: err.params,
@@ -143,7 +219,7 @@ function loadAndValidateConfig(configPath) {
   const gitConfig = versionConfig.git || {};
   const prConfig = gitConfig.pr || {};
 
-  const config = {
+  const config: VersioningsConfig = {
     ...defaultConfig,
     git: {
       ...defaultConfig.git,
@@ -159,4 +235,4 @@ function loadAndValidateConfig(configPath) {
   return config;
 }
 
-module.exports = { loadAndValidateConfig, schema };
+export { schema };

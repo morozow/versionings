@@ -1,7 +1,7 @@
 /* Versioning automation tool, 2018-present */
 
 const fc = require('fast-check');
-const { createRollbackManager, STEP_TYPES } = require('../../rollback');
+const { createRollbackManager } = require('../../rollback');
 
 // --- Generators ---
 

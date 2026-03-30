@@ -91,15 +91,6 @@ function createTrackingExecutor({ localTags = [], localBranches = [], remoteTags
   };
 }
 
-/** Mutating command patterns that must NOT appear during uniqueness checks */
-const MUTATING_PATTERNS = [
-  'npm version',
-  'git checkout -b',
-  'git tag ',      // note: 'git tag --list' is read-only, but 'git tag <name>' is mutating
-  'git commit',
-  'git push',
-];
-
 /** Read-only commands that the checker is allowed to execute */
 function isReadOnlyCommand(cmd) {
   return (
