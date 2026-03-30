@@ -1,4 +1,5 @@
-/* Versioning automation tool, 2018-present */
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2018-present Raman Marozau
 
 /**
  * E2E tests: CLI as a child process with real git repositories.

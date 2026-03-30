@@ -1,4 +1,5 @@
-/* Versioning automation tool, 2018-present */
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2018-present Raman Marozau
 
 import * as fc from 'fast-check';
 import { createReporter } from '../../reporter';

@@ -1,4 +1,5 @@
-/* Versioning automation tool, 2018-present */
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2018-present Raman Marozau
 
 import { createArtifactChecker } from '../../artifact.checker';
 import { EXIT_CODES, VersioningsError } from '../../errors';

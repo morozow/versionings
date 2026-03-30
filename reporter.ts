@@ -1,4 +1,5 @@
-/* Versioning automation tool, 2018-present */
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2018-present Raman Marozau
 
 import { ANSI_FG_GREEN, ANSI_FG_RED, ANSI_FG_NC } from './utils';
 import { VersioningsError, EXIT_CODES } from './errors';

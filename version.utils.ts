@@ -1,6 +1,5 @@
-/*
- * Versioning automation tool, 2018-present
- */
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2018-present Raman Marozau
 
 import { execSync } from 'child_process';
 import * as querystring from 'querystring';

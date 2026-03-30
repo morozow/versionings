@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2018-present Raman Marozau
 const esbuild = require('esbuild');
 esbuild.buildSync({
   entryPoints: ['version.ts'],
