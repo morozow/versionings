@@ -1,20 +1,19 @@
-/*
- * Versioning automation tool, 2018-present
- */
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2018-present Raman Marozau
 
-const fs = require('fs');
-const path = require('path');
+import * as fs from 'fs';
+import * as path from 'path';
 
-const { ANSI_FG_RED, ANSI_FG_NC, EMPTY_LINE, stop, get } = require('./utils');
+import { ANSI_FG_RED, ANSI_FG_NC, EMPTY_LINE, stop, get } from './utils';
 
 const GITHUB_GIT_PLATFORM = 'github';
 const BITBUCKET_GIT_PLATFORM = 'bitbucket';
 const AVAILABLE_GIT_PLATFORMS = [GITHUB_GIT_PLATFORM, BITBUCKET_GIT_PLATFORM];
 
-const defaultConfig = {
+const defaultConfig: any = {
   git: {
-    platform: void 0, // required
-    url: void 0, // required
+    platform: void 0,
+    url: void 0,
     branchType: {
       version: 'version',
     },
@@ -48,7 +47,7 @@ const defaultConfig = {
       premajor: 'premajor',
       prerelease: 'prerelease',
       major: 'major',
-    }
+    },
   },
   common: {
     messages: {
@@ -67,8 +66,8 @@ const defaultConfig = {
       versionAlreadyExistsTag: 'Version number already exists. Pay attention to git version tags.',
       versionAlreadyExistsBranch: 'Version number already exists. Pay attention to git version branches.',
       incorrectGitRemote: 'Git remote is unavailable. Define correct config git.url, local Git remote.',
-    }
-  }
+    },
+  },
 };
 
 const versionConfigPath = path.join(process.cwd(), 'version.json');
@@ -91,9 +90,9 @@ const config = {
     platform: get(versionConfig, 'git.platform', defaultConfig.git.platform),
     pr: {
       ...defaultConfig.git.pr,
-      target: get(versionConfig, 'git.pr.target', defaultConfig.git.pr.target)
-    }
-  }
+      target: get(versionConfig, 'git.pr.target', defaultConfig.git.pr.target),
+    },
+  },
 };
 
-module.exports = config;
+export = config;

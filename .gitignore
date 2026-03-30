@@ -3,3 +3,8 @@
 
 # NPM
 node_modules/
+
+.kiro
+
+# Build output
+dist/

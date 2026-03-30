@@ -1,0 +1,16 @@
+{
+  "env": {
+    "node": true,
+    "commonjs": true,
+    "jest": true,
+    "es2020": true
+  },
+  "extends": "eslint:recommended",
+  "parserOptions": {
+    "ecmaVersion": 2020
+  },
+  "ignorePatterns": [
+    "dist/",
+    "node_modules/"
+  ]
+}
