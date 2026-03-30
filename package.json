@@ -31,6 +31,7 @@
     "yargs": "^17.7.2"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/node": "^25.5.0",
     "esbuild": "^0.27.4",
     "esbuild-jest": "^0.5.0",
@@ -42,7 +43,7 @@
   "jest": {
     "testEnvironment": "node",
     "testMatch": [
-      "**/__tests__/**/*.test.js"
+      "**/__tests__/**/*.test.ts"
     ],
     "moduleFileExtensions": [
       "ts",
@@ -50,7 +51,7 @@
       "json"
     ],
     "transform": {
-      "^.+\\.ts$": "esbuild-jest"
+      "^.+\\.tsx?$": "esbuild-jest"
     }
   }
 }

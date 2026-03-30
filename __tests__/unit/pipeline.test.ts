@@ -4,9 +4,9 @@
  * Validates: Requirements 1.1, 2.1, 2.2, 3.2
  */
 
-const { EXIT_CODES, VersioningsError } = require('../../errors');
+import { EXIT_CODES, VersioningsError } from '../../errors';
 
-// Mock fs for package.json reads — provide manual mock with jest.fn()
+// Mock fs for package.json reads
 jest.mock('fs', () => {
   const actual = jest.requireActual('fs');
   return {
@@ -18,25 +18,24 @@ jest.mock('fs', () => {
 
 const fs = require('fs');
 
-// Mock version.utils to avoid config.ts side-effect (process.exit at require time)
+// Mock version.utils to avoid config.ts side-effect
 jest.mock('../../version.utils', () => ({
   AVAILABLE_SEMVERS: ['patch', 'minor', 'major', 'prepatch', 'preminor', 'premajor', 'prerelease'],
-  composeVersionBranchName: (semver, version, comment) =>
+  composeVersionBranchName: (semver: string, version: string, comment: string) =>
     `version/${semver}/${version}/${comment}`,
-  composeVersionTagName: (semver, version, comment) =>
+  composeVersionTagName: (semver: string, version: string, comment: string) =>
     `${version}--${comment}`,
-  semverMessage: (semver, version) =>
+  semverMessage: (semver: string, version: string) =>
     `Patch: v${version}. You SHOULD consider changes.`,
-  semverNpmMessage: (semver, branch) =>
+  semverNpmMessage: (semver: string, branch: string) =>
     `Version: ${semver}. Comment: ${branch}.`,
-  preidParam: (preid) => (preid ? `--preid=${preid}` : ''),
-  generatePullRequestUrl: (branch) =>
+  preidParam: (preid?: string) => (preid ? `--preid=${preid}` : ''),
+  generatePullRequestUrl: (branch: string) =>
     `https://github.com/user/repo/compare/develop...${branch}?expand=1`,
 }));
 
 const { runPipeline } = require('../../pipeline');
 
-// Mock config (matching VersioningsConfig interface)
 const mockConfig = {
   git: {
     platform: 'github',
@@ -70,25 +69,22 @@ const mockConfig = {
       incorrectGitRemote: 'Wrong remote',
     }
   },
-};
+} as any;
 
-// Mock executor
 function createMockExecutor() {
   return {
-    run: jest.fn(async (cmd) => {
+    run: jest.fn(async (cmd: string) => {
       if (cmd.includes('git status --porcelain')) return { stdout: '', lines: [] };
       if (cmd.includes('git remote --verbose')) return { stdout: 'origin\thttps://github.com/user/repo.git (fetch)', lines: ['origin\thttps://github.com/user/repo.git (fetch)'] };
       if (cmd.includes('npm --no-git-tag-version version')) return { stdout: 'v1.2.3', lines: ['v1.2.3'] };
       if (cmd.includes('git checkout -- package')) return { stdout: '', lines: [] };
       if (cmd.includes('git tag --list')) return { stdout: '', lines: [] };
       if (cmd.includes('git branch --list')) return { stdout: '  main', lines: ['main'] };
-      // Default for mutation commands
       return { stdout: '', lines: [] };
     }),
   };
 }
 
-// Mock rollback manager
 function createMockRollbackManager(rollbackSuccess = true) {
   return {
     record: jest.fn(),
@@ -99,7 +95,6 @@ function createMockRollbackManager(rollbackSuccess = true) {
   };
 }
 
-// Mock artifact checker
 function createMockArtifactChecker() {
   return {
     checkUniqueness: jest.fn(async () => { }),
@@ -129,14 +124,12 @@ describe('runPipeline', () => {
     const executor = createMockExecutor();
     const rollback = createMockRollbackManager();
     const artifactChecker = createMockArtifactChecker();
-
     const result = await runPipeline(baseOpts, {
       executor,
       config: mockConfig,
       rollbackManager: rollback,
       artifactChecker,
     });
-
     expect(result.success).toBe(true);
     expect(result.version).toBe('1.2.3');
     expect(result.previousVersion).toBe('1.2.2');
@@ -145,7 +138,6 @@ describe('runPipeline', () => {
     expect(result.tag).toBe('1.2.3--fix-login');
     expect(result.exitCode).toBe(EXIT_CODES.SUCCESS);
     expect(result.pullRequestUrl).toBeNull();
-    // Mutation commands were called
     expect(rollback.record).toHaveBeenCalled();
   });
 
@@ -153,12 +145,10 @@ describe('runPipeline', () => {
     const executor = createMockExecutor();
     const rollback = createMockRollbackManager();
     const artifactChecker = createMockArtifactChecker();
-
     const plan = await runPipeline(
       { ...baseOpts, dryRun: true },
       { executor, config: mockConfig, rollbackManager: rollback, artifactChecker },
     );
-
     expect(plan.dryRun).toBe(true);
     expect(plan.currentVersion).toBe('1.2.2');
     expect(plan.nextVersion).toBe('1.2.3');
@@ -167,12 +157,10 @@ describe('runPipeline', () => {
     expect(plan.tag).toBe('1.2.3--fix-login');
     expect(Array.isArray(plan.steps)).toBe(true);
     expect(plan.steps.length).toBeGreaterThan(0);
-    // No mutation commands recorded
     expect(rollback.record).not.toHaveBeenCalled();
-    // No mutation commands executed (only validation + probe commands)
-    const mutationCmds = executor.run.mock.calls
-      .map(c => c[0])
-      .filter(cmd =>
+    const mutationCmds = (executor.run as jest.Mock).mock.calls
+      .map((c: any[]) => c[0])
+      .filter((cmd: string) =>
         cmd.includes('git checkout -b') ||
         cmd.includes('git tag --annotate') ||
         cmd.includes('git commit') ||
@@ -183,8 +171,7 @@ describe('runPipeline', () => {
 
   test('error with rollback — when a mutation step fails, rollback is called', async () => {
     const executor = createMockExecutor();
-    // Make the git checkout -b (branch creation) fail
-    executor.run.mockImplementation(async (cmd) => {
+    (executor.run as jest.Mock).mockImplementation(async (cmd: string) => {
       if (cmd.includes('git status --porcelain')) return { stdout: '', lines: [] };
       if (cmd.includes('git remote --verbose')) return { stdout: 'origin\thttps://github.com/user/repo.git (fetch)', lines: ['origin\thttps://github.com/user/repo.git (fetch)'] };
       if (cmd.includes('npm --no-git-tag-version version')) return { stdout: 'v1.2.3', lines: ['v1.2.3'] };
@@ -194,11 +181,9 @@ describe('runPipeline', () => {
     });
     const rollback = createMockRollbackManager(true);
     const artifactChecker = createMockArtifactChecker();
-
     await expect(
       runPipeline(baseOpts, { executor, config: mockConfig, rollbackManager: rollback, artifactChecker })
     ).rejects.toThrow();
-
     expect(rollback.rollback).toHaveBeenCalled();
   });
 
@@ -206,14 +191,13 @@ describe('runPipeline', () => {
     const executor = createMockExecutor();
     const rollback = createMockRollbackManager();
     const artifactChecker = createMockArtifactChecker();
-
     try {
       await runPipeline(
         { ...baseOpts, semver: 'not-a-semver' },
         { executor, config: mockConfig, rollbackManager: rollback, artifactChecker },
       );
       throw new Error('Expected to throw');
-    } catch (err) {
+    } catch (err: any) {
       expect(err).toBeInstanceOf(VersioningsError);
       expect(err.code).toBe(EXIT_CODES.INVALID_ARGS);
     }
@@ -221,17 +205,16 @@ describe('runPipeline', () => {
 
   test('dirty tree — non-empty git status throws DIRTY_TREE', async () => {
     const executor = createMockExecutor();
-    executor.run.mockImplementation(async (cmd) => {
+    (executor.run as jest.Mock).mockImplementation(async (cmd: string) => {
       if (cmd.includes('git status --porcelain')) return { stdout: 'M file.js', lines: ['M file.js'] };
       return { stdout: '', lines: [] };
     });
     const rollback = createMockRollbackManager();
     const artifactChecker = createMockArtifactChecker();
-
     try {
       await runPipeline(baseOpts, { executor, config: mockConfig, rollbackManager: rollback, artifactChecker });
       throw new Error('Expected to throw');
-    } catch (err) {
+    } catch (err: any) {
       expect(err).toBeInstanceOf(VersioningsError);
       expect(err.code).toBe(EXIT_CODES.DIRTY_TREE);
     }
@@ -239,8 +222,7 @@ describe('runPipeline', () => {
 
   test('incomplete rollback — when rollback fails, throws INCOMPLETE_ROLLBACK (exit code 7)', async () => {
     const executor = createMockExecutor();
-    // Make a mutation step fail
-    executor.run.mockImplementation(async (cmd) => {
+    (executor.run as jest.Mock).mockImplementation(async (cmd: string) => {
       if (cmd.includes('git status --porcelain')) return { stdout: '', lines: [] };
       if (cmd.includes('git remote --verbose')) return { stdout: 'origin\thttps://github.com/user/repo.git (fetch)', lines: ['origin\thttps://github.com/user/repo.git (fetch)'] };
       if (cmd.includes('npm --no-git-tag-version version')) return { stdout: 'v1.2.3', lines: ['v1.2.3'] };
@@ -248,14 +230,12 @@ describe('runPipeline', () => {
       if (cmd.includes('git checkout -b')) throw new VersioningsError(EXIT_CODES.COMMAND_FAILED, 'branch failed');
       return { stdout: '', lines: [] };
     });
-    // Rollback also fails
     const rollback = createMockRollbackManager(false);
     const artifactChecker = createMockArtifactChecker();
-
     try {
       await runPipeline(baseOpts, { executor, config: mockConfig, rollbackManager: rollback, artifactChecker });
       throw new Error('Expected to throw');
-    } catch (err) {
+    } catch (err: any) {
       expect(err).toBeInstanceOf(VersioningsError);
       expect(err.code).toBe(EXIT_CODES.INCOMPLETE_ROLLBACK);
       expect(err.details).toBeDefined();

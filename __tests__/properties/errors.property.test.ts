@@ -1,12 +1,11 @@
 /* Versioning automation tool, 2018-present */
 // Feature: enterprise-readiness, Property 9: Exit codes and error format
 
-const fc = require('fast-check');
-const { EXIT_CODES, VersioningsError } = require('../../errors');
+import * as fc from 'fast-check';
+import { EXIT_CODES, VersioningsError } from '../../errors';
 
 const exitCodeValues = Object.values(EXIT_CODES);
 
-/** Arbitrary: random VersioningsError with code from EXIT_CODES */
 const arbExitCode = fc.constantFrom(...exitCodeValues);
 const arbMessage = fc.string({ minLength: 0, maxLength: 200 });
 const arbDetails = fc.oneof(
@@ -25,7 +24,6 @@ describe('Property 9: Exit codes and error format', () => {
     fc.assert(
       fc.property(arbExitCode, arbMessage, arbDetails, (code, message, details) => {
         const err = new VersioningsError(code, message, details);
-
         expect(err.code).toBeGreaterThanOrEqual(0);
         expect(err.code).toBeLessThanOrEqual(7);
         expect(exitCodeValues).toContain(err.code);
@@ -38,7 +36,6 @@ describe('Property 9: Exit codes and error format', () => {
     fc.assert(
       fc.property(arbExitCode, arbMessage, arbDetails, (code, message, details) => {
         const err = new VersioningsError(code, message, details);
-
         expect(typeof err.message).toBe('string');
         expect(err.message).toBe(message);
       }),
@@ -50,7 +47,6 @@ describe('Property 9: Exit codes and error format', () => {
     fc.assert(
       fc.property(arbExitCode, arbMessage, arbDetails, (code, message, details) => {
         const err = new VersioningsError(code, message, details);
-
         expect(err.name).toBe('VersioningsError');
       }),
       { numRuns: 100 }
@@ -61,7 +57,6 @@ describe('Property 9: Exit codes and error format', () => {
     fc.assert(
       fc.property(arbExitCode, arbMessage, arbDetails, (code, message, details) => {
         const err = new VersioningsError(code, message, details);
-
         expect(err).toBeInstanceOf(Error);
         expect(err).toBeInstanceOf(VersioningsError);
       }),
@@ -73,7 +68,6 @@ describe('Property 9: Exit codes and error format', () => {
     fc.assert(
       fc.property(arbExitCode, arbMessage, arbDetails, (code, message, details) => {
         const err = new VersioningsError(code, message, details);
-
         if (details === null) {
           expect(err.details).toBeNull();
         } else {

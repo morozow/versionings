@@ -1,15 +1,12 @@
 /* Versioning automation tool, 2018-present */
 
-const { createArtifactChecker } = require('../../artifact.checker');
-const { EXIT_CODES, VersioningsError } = require('../../errors');
+import { createArtifactChecker } from '../../artifact.checker';
+import { EXIT_CODES, VersioningsError } from '../../errors';
+import type { Executor, ExecutorResult } from '../../executor';
 
-/**
- * Creates a mock executor whose run() returns canned responses
- * based on substring matching against the command string.
- */
-function createMockExecutor(responses) {
+function createMockExecutor(responses: Record<string, string>): Executor {
   return {
-    run: jest.fn(async (cmd) => {
+    run: jest.fn(async (cmd: string): Promise<ExecutorResult> => {
       for (const [pattern, response] of Object.entries(responses)) {
         if (cmd.includes(pattern)) {
           return {
@@ -31,7 +28,6 @@ describe('createArtifactChecker', () => {
         'git branch --list': '  main\n  develop',
       });
       const checker = createArtifactChecker(executor);
-
       await expect(
         checker.checkUniqueness({
           tagName: '1.0.0--fix',
@@ -49,7 +45,6 @@ describe('createArtifactChecker', () => {
         'git branch --list': '  main',
       });
       const checker = createArtifactChecker(executor);
-
       try {
         await checker.checkUniqueness({
           tagName: '1.0.0--fix',
@@ -57,7 +52,7 @@ describe('createArtifactChecker', () => {
           push: false,
         });
         throw new Error('Expected to throw');
-      } catch (err) {
+      } catch (err: any) {
         expect(err).toBeInstanceOf(VersioningsError);
         expect(err.code).toBe(EXIT_CODES.ARTIFACT_CONFLICT);
         expect(err.details).toEqual({
@@ -76,7 +71,6 @@ describe('createArtifactChecker', () => {
         'git branch --list': '* version/patch/1.0.0/fix\n  main',
       });
       const checker = createArtifactChecker(executor);
-
       try {
         await checker.checkUniqueness({
           tagName: '1.0.0--fix',
@@ -84,7 +78,7 @@ describe('createArtifactChecker', () => {
           push: false,
         });
         throw new Error('Expected to throw');
-      } catch (err) {
+      } catch (err: any) {
         expect(err).toBeInstanceOf(VersioningsError);
         expect(err.code).toBe(EXIT_CODES.ARTIFACT_CONFLICT);
         expect(err.details).toEqual({
@@ -103,7 +97,6 @@ describe('createArtifactChecker', () => {
         'git branch --list': '  main',
       });
       const checker = createArtifactChecker(executor);
-
       await expect(
         checker.checkUniqueness({
           tagName: '1.0.0--fix',
@@ -121,7 +114,6 @@ describe('createArtifactChecker', () => {
         'git branch --list': '  version/patch/1.0.0/fix-more\n  main',
       });
       const checker = createArtifactChecker(executor);
-
       await expect(
         checker.checkUniqueness({
           tagName: '1.0.0--fix',
@@ -141,7 +133,6 @@ describe('createArtifactChecker', () => {
         'ls-remote --heads': '',
       });
       const checker = createArtifactChecker(executor);
-
       try {
         await checker.checkUniqueness({
           tagName: '1.0.0--fix',
@@ -149,7 +140,7 @@ describe('createArtifactChecker', () => {
           push: true,
         });
         throw new Error('Expected to throw');
-      } catch (err) {
+      } catch (err: any) {
         expect(err).toBeInstanceOf(VersioningsError);
         expect(err.code).toBe(EXIT_CODES.ARTIFACT_CONFLICT);
         expect(err.details).toEqual({
@@ -170,7 +161,6 @@ describe('createArtifactChecker', () => {
         'ls-remote --heads': 'abc123\trefs/heads/version/patch/1.0.0/fix',
       });
       const checker = createArtifactChecker(executor);
-
       try {
         await checker.checkUniqueness({
           tagName: '1.0.0--fix',
@@ -178,7 +168,7 @@ describe('createArtifactChecker', () => {
           push: true,
         });
         throw new Error('Expected to throw');
-      } catch (err) {
+      } catch (err: any) {
         expect(err).toBeInstanceOf(VersioningsError);
         expect(err.code).toBe(EXIT_CODES.ARTIFACT_CONFLICT);
         expect(err.details).toEqual({
@@ -197,14 +187,12 @@ describe('createArtifactChecker', () => {
         'git branch --list': '  main',
       });
       const checker = createArtifactChecker(executor);
-
       await checker.checkUniqueness({
         tagName: '1.0.0--fix',
         branchName: 'version/patch/1.0.0/fix',
         push: false,
       });
-
-      const calls = executor.run.mock.calls.map((c) => c[0]);
+      const calls = (executor.run as jest.Mock).mock.calls.map((c: any[]) => c[0]);
       expect(calls).not.toEqual(
         expect.arrayContaining([expect.stringContaining('ls-remote')])
       );

@@ -1,11 +1,12 @@
 /* Versioning automation tool, 2018-present */
 
-const fc = require('fast-check');
-const { createRollbackManager } = require('../../rollback');
+import * as fc from 'fast-check';
+import { createRollbackManager } from '../../rollback';
+import type { Executor, ExecutorResult } from '../../executor';
+import type { RollbackStep } from '../../rollback';
 
 // --- Generators ---
 
-/** arbStepType: random step type excluding 'pushed' for simplicity */
 const arbStepType = fc.constantFrom(
   'npm_version_bump',
   'branch_created',
@@ -13,12 +14,10 @@ const arbStepType = fc.constantFrom(
   'committed'
 );
 
-/** arbStepMeta: generate appropriate meta for each step type */
-function arbStepMeta(type) {
+function arbStepMeta(type: string): fc.Arbitrary<Record<string, any>> {
   switch (type) {
     case 'branch_created':
     case 'tag_created':
-      // Generate git-safe names: alphanumeric with hyphens/slashes, non-empty
       return fc
         .stringOf(fc.constantFrom(...'abcdefghijklmnopqrstuvwxyz0123456789-/'.split('')), {
           minLength: 1,
@@ -32,19 +31,15 @@ function arbStepMeta(type) {
   }
 }
 
-/** arbStep: a single step with type and matching meta */
-const arbStep = arbStepType.chain((type) => arbStepMeta(type).map((meta) => ({ type, meta })));
+const arbStep: fc.Arbitrary<RollbackStep> = arbStepType.chain((type) =>
+  arbStepMeta(type).map((meta) => ({ type, meta }))
+);
 
-/** arbSteps: array of 1-10 random steps */
 const arbSteps = fc.array(arbStep, { minLength: 1, maxLength: 10 });
 
 // --- Helpers ---
 
-/**
- * Pure helper: compute the expected reverse command for a step.
- * Mirrors the rollback logic but kept independent for test clarity.
- */
-function expectedReverseCommand(step) {
+function expectedReverseCommand(step: RollbackStep): string {
   const { type, meta } = step;
   switch (type) {
     case 'npm_version_bump':
@@ -60,15 +55,11 @@ function expectedReverseCommand(step) {
   }
 }
 
-/**
- * Create a mock executor that tracks commands in order.
- * @param {Set<number>} failIndices — indices (in execution order) where run() should throw
- */
-function createTrackingExecutor(failIndices = new Set()) {
-  const commands = [];
+function createTrackingExecutor(failIndices = new Set<number>()): Executor & { commands: string[] } {
+  const commands: string[] = [];
   let callIndex = 0;
   return {
-    run: async (cmd) => {
+    run: async (cmd: string): Promise<ExecutorResult> => {
       const idx = callIndex++;
       commands.push(cmd);
       if (failIndices.has(idx)) {
@@ -81,7 +72,6 @@ function createTrackingExecutor(failIndices = new Set()) {
 }
 
 // --- Property 3 ---
-// Feature: enterprise-readiness, Property 3: Rollback in reverse order
 describe('Property 3: Rollback in reverse order', () => {
   // Validates: Requirements 3.1, 3.2, 3.3
 
@@ -90,14 +80,10 @@ describe('Property 3: Rollback in reverse order', () => {
       fc.asyncProperty(arbSteps, async (steps) => {
         const executor = createTrackingExecutor();
         const mgr = createRollbackManager(executor);
-
         for (const step of steps) {
           mgr.record(step);
         }
-
         await mgr.rollback();
-
-        // Expected: reverse commands in LIFO order
         const expectedCommands = [...steps].reverse().map(expectedReverseCommand);
         expect(executor.commands).toEqual(expectedCommands);
       }),
@@ -111,23 +97,15 @@ describe('Property 3: Rollback in reverse order', () => {
         arbSteps,
         fc.integer({ min: 0, max: 9 }),
         async (steps, failIdx) => {
-          // Clamp failIdx to valid range for this steps array
           const clampedFailIdx = failIdx % steps.length;
           const failIndices = new Set([clampedFailIdx]);
-
           const executor = createTrackingExecutor(failIndices);
           const mgr = createRollbackManager(executor);
-
           for (const step of steps) {
             mgr.record(step);
           }
-
           await mgr.rollback();
-
-          // All N steps must have been attempted (one command per step)
           expect(executor.commands).toHaveLength(steps.length);
-
-          // Verify commands after the failed index were still executed
           const reversedSteps = [...steps].reverse();
           for (let i = clampedFailIdx + 1; i < reversedSteps.length; i++) {
             expect(executor.commands[i]).toBe(expectedReverseCommand(reversedSteps[i]));
@@ -140,22 +118,18 @@ describe('Property 3: Rollback in reverse order', () => {
 });
 
 // --- Property 4 ---
-// Feature: enterprise-readiness, Property 4: Exit code after rollback
 describe('Property 4: Exit code after rollback', () => {
   // Validates: Requirements 3.4, 3.5
 
   test('if all steps rolled back successfully, success=true', async () => {
     await fc.assert(
       fc.asyncProperty(arbSteps, async (steps) => {
-        const executor = createTrackingExecutor(); // no failures
+        const executor = createTrackingExecutor();
         const mgr = createRollbackManager(executor);
-
         for (const step of steps) {
           mgr.record(step);
         }
-
         const result = await mgr.rollback();
-
         expect(result.success).toBe(true);
         expect(result.failedSteps).toEqual([]);
       }),
@@ -171,25 +145,17 @@ describe('Property 4: Exit code after rollback', () => {
         async (steps, failIdx) => {
           const clampedFailIdx = failIdx % steps.length;
           const failIndices = new Set([clampedFailIdx]);
-
           const executor = createTrackingExecutor(failIndices);
           const mgr = createRollbackManager(executor);
-
           for (const step of steps) {
             mgr.record(step);
           }
-
           const result = await mgr.rollback();
-
           expect(result.success).toBe(false);
           expect(result.failedSteps.length).toBeGreaterThanOrEqual(1);
-
-          // The failed step must correspond to the injected failure
           const failedTypes = result.failedSteps.map((f) => f.step.type);
           const reversedSteps = [...steps].reverse();
           expect(failedTypes).toContain(reversedSteps[clampedFailIdx].type);
-
-          // Each failed step must have an error object
           for (const f of result.failedSteps) {
             expect(f.error).toBeInstanceOf(Error);
           }
@@ -204,25 +170,17 @@ describe('Property 4: Exit code after rollback', () => {
       fc.asyncProperty(
         fc.array(arbStep, { minLength: 3, maxLength: 10 }),
         async (steps) => {
-          // Fail on first and last rollback indices
           const failIndices = new Set([0, steps.length - 1]);
-
           const executor = createTrackingExecutor(failIndices);
           const mgr = createRollbackManager(executor);
-
           for (const step of steps) {
             mgr.record(step);
           }
-
           const result = await mgr.rollback();
-
           expect(result.success).toBe(false);
-          // At least 2 failures (first and last), could be same if length=1
           expect(result.failedSteps.length).toBe(
             steps.length === 1 ? 1 : 2
           );
-
-          // All steps were still attempted
           expect(executor.commands).toHaveLength(steps.length);
         }
       ),

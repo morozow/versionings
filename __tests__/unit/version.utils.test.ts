@@ -1,13 +1,14 @@
 /* Versioning automation tool, 2018-present */
 
-const {
+import {
   composeVersionBranchName,
   composeVersionTagName,
   AVAILABLE_SEMVERS,
   preidParam,
   semverMessage,
   generatePullRequestUrl,
-} = require('../../version.utils');
+} from '../../version.utils';
+import type { VersioningsConfig } from '../../config.validator';
 
 const mockConfig = {
   git: {
@@ -42,7 +43,7 @@ const mockConfig = {
       major: 'major',
     },
   },
-};
+} as unknown as VersioningsConfig;
 
 describe('composeVersionBranchName()', () => {
   test('returns correct format version/<type>/<version>/<comment>', () => {
@@ -130,14 +131,12 @@ describe('generatePullRequestUrl()', () => {
   test('returns a URL containing the branch name for github platform', () => {
     const branch = 'version/patch/1.2.3/fix-login';
     const url = generatePullRequestUrl(branch, mockConfig);
-
     expect(url).toContain(branch);
   });
 
   test('returns a github compare URL format', () => {
     const branch = 'version/minor/1.3.0/new-feature';
     const url = generatePullRequestUrl(branch, mockConfig);
-
     expect(url).toContain('/compare/');
     expect(url).toContain('develop...');
     expect(url).toContain(branch);
@@ -146,14 +145,12 @@ describe('generatePullRequestUrl()', () => {
   test('includes expand=1 query parameter', () => {
     const branch = 'version/patch/1.0.1/hotfix';
     const url = generatePullRequestUrl(branch, mockConfig);
-
     expect(url).toContain('expand=1');
   });
 
   test('uses the repo URL from config', () => {
     const branch = 'version/patch/1.0.0/test';
     const url = generatePullRequestUrl(branch, mockConfig);
-
     expect(url).toContain('github.com/user/repo');
   });
 });

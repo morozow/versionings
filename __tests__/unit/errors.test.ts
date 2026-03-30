@@ -1,6 +1,6 @@
 /* Versioning automation tool, 2018-present */
 
-const { EXIT_CODES, VersioningsError } = require('../../errors');
+import { EXIT_CODES, VersioningsError } from '../../errors';
 
 describe('EXIT_CODES', () => {
   test('contains all expected codes with correct values', () => {
@@ -22,13 +22,10 @@ describe('EXIT_CODES', () => {
 
   test('is frozen (immutable)', () => {
     expect(Object.isFrozen(EXIT_CODES)).toBe(true);
-
-    // Attempting mutation should have no effect
-    EXIT_CODES.SUCCESS = 99;
+    (EXIT_CODES as any).SUCCESS = 99;
     expect(EXIT_CODES.SUCCESS).toBe(0);
-
-    EXIT_CODES.NEW_CODE = 10;
-    expect(EXIT_CODES.NEW_CODE).toBeUndefined();
+    (EXIT_CODES as any).NEW_CODE = 10;
+    expect((EXIT_CODES as any).NEW_CODE).toBeUndefined();
   });
 });
 
@@ -42,10 +39,9 @@ describe('VersioningsError', () => {
   test('sets code, message, and details correctly', () => {
     const details = { path: '/some/path' };
     const err = new VersioningsError(EXIT_CODES.CONFIG_ERROR, 'Config missing', details);
-
     expect(err.code).toBe(1);
     expect(err.message).toBe('Config missing');
-    expect(err.details).toBe(details); // same reference
+    expect(err.details).toBe(details);
   });
 
   test('defaults details to null', () => {
@@ -62,7 +58,7 @@ describe('VersioningsError', () => {
     const err = new VersioningsError(EXIT_CODES.DIRTY_TREE, 'dirty');
     expect(err.stack).toBeDefined();
     expect(typeof err.stack).toBe('string');
-    expect(err.stack.length).toBeGreaterThan(0);
+    expect(err.stack!.length).toBeGreaterThan(0);
   });
 
   test('works with all exit codes', () => {
