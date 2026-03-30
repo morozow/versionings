@@ -73,7 +73,6 @@ function writeTempConfig(obj: any): string {
 // --- Property 8: Config validation by JSON Schema ---
 
 describe('Property 8: Config validation by JSON Schema', () => {
-  // Validates: Requirements 5.1, 5.2
 
   test('valid configs always return a config object (no throw)', () => {
     fc.assert(

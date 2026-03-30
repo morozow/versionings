@@ -1,9 +1,5 @@
 /* Versioning automation tool, 2018-present */
 
-/**
- * Validates: Requirements 1.1, 2.1, 2.2, 3.2
- */
-
 import { EXIT_CODES, VersioningsError } from '../../errors';
 
 // Mock fs for package.json reads

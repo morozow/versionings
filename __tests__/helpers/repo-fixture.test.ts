@@ -3,8 +3,6 @@
 /**
  * Tests for the repo-fixture test helper.
  * Verifies that isolated git repositories are created correctly.
- *
- * Validates: Requirements 1.3
  */
 
 import * as path from 'path';

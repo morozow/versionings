@@ -73,7 +73,6 @@ function createTrackingExecutor(failIndices = new Set<number>()): Executor & { c
 
 // --- Property 3 ---
 describe('Property 3: Rollback in reverse order', () => {
-  // Validates: Requirements 3.1, 3.2, 3.3
 
   test('rollback executes reverse commands in LIFO order for any step sequence', async () => {
     await fc.assert(
@@ -119,7 +118,6 @@ describe('Property 3: Rollback in reverse order', () => {
 
 // --- Property 4 ---
 describe('Property 4: Exit code after rollback', () => {
-  // Validates: Requirements 3.4, 3.5
 
   test('if all steps rolled back successfully, success=true', async () => {
     await fc.assert(

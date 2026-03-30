@@ -29,7 +29,6 @@ const mockExecError = (exitCode: number, stdout: string, stderr: string): ExecFn
 
 // --- Property 5 ---
 describe('Property 5: Output normalization', () => {
-  // Validates: Requirements 4.2
 
   test('stdout field is trimmed of leading/trailing whitespace', async () => {
     await fc.assert(
@@ -62,7 +61,6 @@ describe('Property 5: Output normalization', () => {
 
 // --- Property 6 ---
 describe('Property 6: Structured error', () => {
-  // Validates: Requirements 4.3
 
   test('non-zero exit code throws VersioningsError with code COMMAND_FAILED', async () => {
     await fc.assert(
@@ -94,7 +92,6 @@ describe('Property 6: Structured error', () => {
 
 // --- Property 7 ---
 describe('Property 7: Verbose logging', () => {
-  // Validates: Requirements 4.4
 
   test('command is logged before execution when verbose is true', async () => {
     await fc.assert(

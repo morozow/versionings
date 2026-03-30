@@ -2,7 +2,6 @@
 
 /**
  * Property tests for dry-run mode.
- * Validates: Requirements 2.1, 2.2, 2.3, 2.4
  */
 
 import * as fc from 'fast-check';

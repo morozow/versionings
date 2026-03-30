@@ -18,7 +18,6 @@ const arbDetails = fc.oneof(
 );
 
 describe('Property 9: Exit codes and error format', () => {
-  // Validates: Requirements 8.2, 8.4
 
   test('code is always in range 0-7 and is one of EXIT_CODES values', () => {
     fc.assert(

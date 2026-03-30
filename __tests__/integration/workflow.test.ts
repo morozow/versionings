@@ -2,7 +2,6 @@
 
 /**
  * Integration tests: Full workflow with real git (no mocks).
- * Validates: Requirements 1.3, 2.1, 3.2, 10.5
  */
 
 import * as path from 'path';

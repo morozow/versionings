@@ -2,7 +2,6 @@
 
 /**
  * E2E tests: CLI as a child process with real git repositories.
- * Validates: Requirements 1.4, 8.1, 8.2, 9.1
  */
 
 import { spawnSync } from 'child_process';

@@ -3,10 +3,6 @@
 import { createRollbackManager, STEP_TYPES } from '../../rollback';
 import type { Executor, ExecutorResult } from '../../executor';
 
-/**
- * Validates: Requirements 3.1, 3.2, 3.3
- */
-
 function createMockExecutor(): Executor & { commands: string[] } {
   const commands: string[] = [];
   return {
