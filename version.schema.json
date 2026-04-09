@@ -1,18 +1,98 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
-  "required": ["git"],
+  "required": [
+    "git"
+  ],
   "properties": {
     "git": {
       "type": "object",
-      "required": ["platform", "url"],
+      "required": [
+        "platform",
+        "url"
+      ],
       "properties": {
-        "platform": { "type": "string", "enum": ["github", "bitbucket"] },
-        "url": { "type": "string", "minLength": 1, "maxLength": 2048 },
+        "platform": {
+          "type": "string",
+          "enum": [
+            "github",
+            "bitbucket"
+          ]
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        },
+        "remote": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "branchType": {
+          "type": "object",
+          "properties": {
+            "version": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            }
+          }
+        },
         "pr": {
           "type": "object",
           "properties": {
-            "target": { "type": "string", "minLength": 1, "maxLength": 256 }
+            "target": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          }
+        },
+        "limits": {
+          "type": "object",
+          "properties": {
+            "branchMaxCommentLength": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1024
+            }
+          }
+        },
+        "commit": {
+          "type": "object",
+          "properties": {
+            "message": {
+              "type": "object",
+              "properties": {
+                "semver": {
+                  "type": "object",
+                  "properties": {
+                    "patch": {
+                      "type": "string"
+                    },
+                    "prepatch": {
+                      "type": "string"
+                    },
+                    "minor": {
+                      "type": "string"
+                    },
+                    "preminor": {
+                      "type": "string"
+                    },
+                    "premajor": {
+                      "type": "string"
+                    },
+                    "major": {
+                      "type": "string"
+                    },
+                    "prerelease": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }

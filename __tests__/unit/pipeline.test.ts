@@ -241,3 +241,129 @@ describe('runPipeline', () => {
     }
   });
 });
+
+describe('runPipeline — operation log integration', () => {
+  function createMockOperationLog() {
+    return {
+      save: jest.fn(async () => '/tmp/log.json'),
+      loadLast: jest.fn(async () => null),
+      loadFrom: jest.fn(async () => ({})),
+    };
+  }
+
+  test('saves log with result "success" after successful pipeline', async () => {
+    const executor = createMockExecutor();
+    const rollback = createMockRollbackManager();
+    const artifactChecker = createMockArtifactChecker();
+    const operationLog = createMockOperationLog();
+
+    await runPipeline(baseOpts, {
+      executor,
+      config: mockConfig,
+      rollbackManager: rollback,
+      artifactChecker,
+      operationLog,
+    });
+
+    expect(operationLog.save).toHaveBeenCalledTimes(1);
+    const entry = operationLog.save.mock.calls[0][0];
+    expect(entry.schemaVersion).toBe(1);
+    expect(entry.result).toBe('success');
+    expect(entry.semver).toBe('patch');
+    expect(entry.version).toBe('1.2.3');
+    expect(entry.previousVersion).toBe('1.2.2');
+    expect(entry.branch).toBe('version/patch/1.2.3/fix-login');
+    expect(entry.tag).toBe('1.2.3--fix-login');
+    expect(entry.steps.length).toBeGreaterThan(0);
+    expect(entry.error).toBeUndefined();
+    expect(entry.timestamp).toBeDefined();
+  });
+
+  test('saves log with result "failed" when mutation step fails and rollback succeeds', async () => {
+    const executor = createMockExecutor();
+    (executor.run as jest.Mock).mockImplementation(async (cmd: string) => {
+      if (cmd.includes('git status --porcelain')) return { stdout: '', lines: [] };
+      if (cmd.includes('git remote --verbose')) return { stdout: 'origin\thttps://github.com/user/repo.git (fetch)', lines: ['origin\thttps://github.com/user/repo.git (fetch)'] };
+      if (cmd.includes('npm --no-git-tag-version version')) return { stdout: 'v1.2.3', lines: ['v1.2.3'] };
+      if (cmd.includes('git checkout -- package')) return { stdout: '', lines: [] };
+      if (cmd.includes('git checkout -b')) throw new VersioningsError(EXIT_CODES.COMMAND_FAILED, 'branch creation failed');
+      return { stdout: '', lines: [] };
+    });
+    const rollback = createMockRollbackManager(true);
+    const artifactChecker = createMockArtifactChecker();
+    const operationLog = createMockOperationLog();
+
+    await expect(
+      runPipeline(baseOpts, { executor, config: mockConfig, rollbackManager: rollback, artifactChecker, operationLog })
+    ).rejects.toThrow();
+
+    expect(operationLog.save).toHaveBeenCalledTimes(1);
+    const entry = operationLog.save.mock.calls[0][0];
+    expect(entry.result).toBe('failed');
+    expect(entry.error).toBeDefined();
+    expect(entry.error.message).toBe('branch creation failed');
+    expect(entry.error.code).toBe(EXIT_CODES.COMMAND_FAILED);
+    expect(entry.steps.length).toBeGreaterThan(0);
+  });
+
+  test('saves log with result "failed" on incomplete rollback', async () => {
+    const executor = createMockExecutor();
+    (executor.run as jest.Mock).mockImplementation(async (cmd: string) => {
+      if (cmd.includes('git status --porcelain')) return { stdout: '', lines: [] };
+      if (cmd.includes('git remote --verbose')) return { stdout: 'origin\thttps://github.com/user/repo.git (fetch)', lines: ['origin\thttps://github.com/user/repo.git (fetch)'] };
+      if (cmd.includes('npm --no-git-tag-version version')) return { stdout: 'v1.2.3', lines: ['v1.2.3'] };
+      if (cmd.includes('git checkout -- package')) return { stdout: '', lines: [] };
+      if (cmd.includes('git checkout -b')) throw new VersioningsError(EXIT_CODES.COMMAND_FAILED, 'branch failed');
+      return { stdout: '', lines: [] };
+    });
+    const rollback = createMockRollbackManager(false);
+    const artifactChecker = createMockArtifactChecker();
+    const operationLog = createMockOperationLog();
+
+    await expect(
+      runPipeline(baseOpts, { executor, config: mockConfig, rollbackManager: rollback, artifactChecker, operationLog })
+    ).rejects.toThrow();
+
+    expect(operationLog.save).toHaveBeenCalledTimes(1);
+    const entry = operationLog.save.mock.calls[0][0];
+    expect(entry.result).toBe('failed');
+    expect(entry.error).toBeDefined();
+  });
+
+  test('pipeline works without operationLog (backward compatibility)', async () => {
+    const executor = createMockExecutor();
+    const rollback = createMockRollbackManager();
+    const artifactChecker = createMockArtifactChecker();
+
+    // No operationLog in deps — should work exactly as before
+    const result = await runPipeline(baseOpts, {
+      executor,
+      config: mockConfig,
+      rollbackManager: rollback,
+      artifactChecker,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.version).toBe('1.2.3');
+  });
+
+  test('pipeline still succeeds if operationLog.save throws', async () => {
+    const executor = createMockExecutor();
+    const rollback = createMockRollbackManager();
+    const artifactChecker = createMockArtifactChecker();
+    const operationLog = createMockOperationLog();
+    operationLog.save.mockRejectedValue(new Error('disk full'));
+
+    const result = await runPipeline(baseOpts, {
+      executor,
+      config: mockConfig,
+      rollbackManager: rollback,
+      artifactChecker,
+      operationLog,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.version).toBe('1.2.3');
+    expect(operationLog.save).toHaveBeenCalledTimes(1);
+  });
+});

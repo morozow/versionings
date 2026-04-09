@@ -8,12 +8,19 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
+import { PassThrough } from 'stream';
 import { createExecutor } from '../../executor';
 import { createRollbackManager } from '../../rollback';
 import { createArtifactChecker } from '../../artifact.checker';
 import { loadAndValidateConfig } from '../../config.validator';
 import { runPipeline } from '../../pipeline';
+import { runReleaseCommand, ReleaseCommandOpts, ReleaseCommandDeps } from '../../release.command';
+import { runRollbackCommand, RollbackCommandOpts, RollbackCommandDeps } from '../../rollback.command';
+import { createReporter } from '../../reporter';
+import { createOperationLog } from '../../operation.log';
 import { EXIT_CODES, VersioningsError } from '../../errors';
+import type { InteractionManager } from '../../interaction.manager';
+import type { PipelineResult } from '../../reporter';
 import {
   createRepoFixture,
   snapshotRepoState,
@@ -186,5 +193,206 @@ describe('Integration: Real git workflow', () => {
       expect(err.code).toBe(EXIT_CODES.CONFIG_ERROR);
     }
     assertNoMutation(repoDir, snapshotBefore);
+  }, 30000);
+});
+
+
+// ---------------------------------------------------------------------------
+// Helpers for Confirm Flow & Operation Log tests
+// ---------------------------------------------------------------------------
+
+function makeMockInteraction(interactive: boolean, confirmResult = true): InteractionManager {
+  return {
+    isInteractive: jest.fn().mockReturnValue(interactive),
+    confirm: jest.fn().mockResolvedValue(confirmResult),
+  };
+}
+
+function createReleaseDeps(repoDir: string, opts: {
+  interactive?: boolean;
+  confirmResult?: boolean;
+  json?: boolean;
+  operationLogDir?: string;
+} = {}): { releaseDeps: ReleaseCommandDeps; stdout: PassThrough } {
+  const pipelineDeps = createDeps(repoDir);
+  const stdout = new PassThrough();
+  const reporter = createReporter({ json: opts.json ?? false });
+  const interactionManager = makeMockInteraction(
+    opts.interactive ?? false,
+    opts.confirmResult ?? true,
+  );
+  const logDir = opts.operationLogDir ?? fs.mkdtempSync(path.join(os.tmpdir(), 'versionings-oplog-'));
+  const operationLog = createOperationLog(logDir);
+
+  const releaseDeps: ReleaseCommandDeps = {
+    runPipeline,
+    pipelineDeps,
+    interactionManager,
+    operationLog,
+    reporter,
+    stdout,
+  };
+
+  return { releaseDeps, stdout };
+}
+
+function captureOutput(stream: PassThrough): () => string {
+  let output = '';
+  stream.on('data', (chunk: Buffer) => { output += chunk.toString(); });
+  return () => output;
+}
+
+const releaseBaseOpts: ReleaseCommandOpts = {
+  semver: 'patch',
+  branch: 'fix-login',
+  push: false,
+  dryRun: false,
+  json: false,
+  verbose: false,
+};
+
+// ---------------------------------------------------------------------------
+// Confirm Flow & Operation Log integration tests
+// ---------------------------------------------------------------------------
+
+describe('Integration: Confirm Flow and operation.log', () => {
+  test('release in interactive mode — confirmation leads to success', async () => {
+    const { repoDir, remoteDir } = createRepoFixture();
+    dirs.push(repoDir, remoteDir);
+    process.chdir(repoDir);
+
+    const { releaseDeps, stdout } = createReleaseDeps(repoDir, {
+      interactive: true,
+      confirmResult: true,
+    });
+    const getOutput = captureOutput(stdout);
+
+    const result = await runReleaseCommand(releaseBaseOpts, releaseDeps) as PipelineResult;
+
+    expect(result.success).toBe(true);
+    expect(result.version).toBe('1.0.1');
+    expect(result.previousVersion).toBe('1.0.0');
+    expect(releaseDeps.interactionManager.isInteractive).toHaveBeenCalled();
+    expect(releaseDeps.interactionManager.confirm).toHaveBeenCalledTimes(1);
+    assertRepoState(repoDir, { version: '1.0.1', clean: true });
+    expect(getOutput()).toContain('1.0.1');
+  }, 30000);
+
+  test('release in interactive mode — decline leads to USER_CANCELLED', async () => {
+    const { repoDir, remoteDir } = createRepoFixture();
+    dirs.push(repoDir, remoteDir);
+    process.chdir(repoDir);
+
+    const snapshotBefore = snapshotRepoState(repoDir);
+    const { releaseDeps } = createReleaseDeps(repoDir, {
+      interactive: true,
+      confirmResult: false,
+    });
+
+    try {
+      await runReleaseCommand(releaseBaseOpts, releaseDeps);
+      throw new Error('Expected runReleaseCommand to throw');
+    } catch (err: any) {
+      expect(err).toBeInstanceOf(VersioningsError);
+      expect(err.code).toBe(EXIT_CODES.USER_CANCELLED);
+      expect(err.message).toContain('cancelled');
+    }
+
+    // Repository must remain untouched
+    assertNoMutation(repoDir, snapshotBefore);
+  }, 30000);
+
+  test('operation log created after successful release', async () => {
+    const { repoDir, remoteDir } = createRepoFixture();
+    dirs.push(repoDir, remoteDir);
+    process.chdir(repoDir);
+
+    const logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'versionings-oplog-'));
+    dirs.push(logDir);
+
+    const { releaseDeps } = createReleaseDeps(repoDir, {
+      operationLogDir: logDir,
+    });
+
+    await runReleaseCommand(releaseBaseOpts, releaseDeps);
+
+    // Verify operation log was created
+    const operationLog = createOperationLog(logDir);
+    const lastEntry = await operationLog.loadLast();
+    expect(lastEntry).not.toBeNull();
+    expect(lastEntry!.schemaVersion).toBe(1);
+    expect(lastEntry!.result).toBe('success');
+    expect(lastEntry!.version).toBe('1.0.1');
+    expect(lastEntry!.previousVersion).toBe('1.0.0');
+    expect(lastEntry!.semver).toBe('patch');
+    expect(lastEntry!.tag).toBe('1.0.1--fix-login');
+    expect(lastEntry!.branch).toContain('version/patch/1.0.1/fix-login');
+    expect(lastEntry!.timestamp).toBeTruthy();
+
+    // Verify last.json symlink exists
+    const lastLink = path.join(logDir, 'last.json');
+    expect(fs.existsSync(lastLink)).toBe(true);
+  }, 30000);
+
+  test('rollback using last operation log', async () => {
+    const { repoDir, remoteDir } = createRepoFixture();
+    dirs.push(repoDir, remoteDir);
+    process.chdir(repoDir);
+
+    const logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'versionings-oplog-'));
+    dirs.push(logDir);
+
+    // Step 1: Perform a release via pipeline with operationLog in deps
+    // so the pipeline records actual rollback steps in the log
+    const pipelineDeps = createDeps(repoDir);
+    const operationLog = createOperationLog(logDir);
+    const pipelineResult: any = await runPipeline(
+      { ...baseOpts, dryRun: false },
+      { ...pipelineDeps, operationLog },
+    );
+
+    // Verify release happened
+    expect(pipelineResult.success).toBe(true);
+    assertRepoState(repoDir, { version: '1.0.1' });
+
+    // Verify operation log was saved with steps
+    const savedEntry = await operationLog.loadLast();
+    expect(savedEntry).not.toBeNull();
+    expect(savedEntry!.steps.length).toBeGreaterThan(0);
+
+    // Step 2: Rollback using the operation log (stay on version branch)
+    const executor = createExecutor();
+    const rollbackStdout = new PassThrough();
+    const reporter = createReporter({ json: false });
+    const interactionManager = makeMockInteraction(false);
+
+    const rollbackDeps: RollbackCommandDeps = {
+      operationLog,
+      executor,
+      createRollbackManager: (exec) => createRollbackManager(exec),
+      interactionManager,
+      reporter,
+      stdout: rollbackStdout,
+    };
+
+    const rollbackOpts: RollbackCommandOpts = {
+      json: false,
+      ci: true,
+      yes: true,
+    };
+
+    // Rollback may partially fail (can't delete current branch) — that's expected
+    // The key integration point is: log is loaded, steps are replayed, tag is removed
+    try {
+      await runRollbackCommand(rollbackOpts, rollbackDeps);
+    } catch (err: any) {
+      // INCOMPLETE_ROLLBACK is acceptable — branch deletion fails when on that branch
+      expect(err).toBeInstanceOf(VersioningsError);
+      expect(err.code).toBe(EXIT_CODES.INCOMPLETE_ROLLBACK);
+    }
+
+    // Verify tag was removed (rollback undid tag_created)
+    const tags = git(repoDir, 'tag --list').split(/\r?\n/).filter(Boolean);
+    expect(tags).toEqual([]);
   }, 30000);
 });

@@ -9,5 +9,5 @@ esbuild.buildSync({
   format: 'cjs',
   outdir: 'dist',
   banner: { js: '#!/usr/bin/env node' },
-  external: ['yargs', 'open'],
+  external: ['yargs', 'open', 'js-yaml'],
 });

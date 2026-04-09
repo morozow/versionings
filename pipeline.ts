@@ -18,6 +18,8 @@ import type { RollbackManager } from './rollback';
 import type { ArtifactChecker } from './artifact.checker';
 import type { VersioningsConfig } from './config.validator';
 import type { PipelineResult, DryRunPlan } from './reporter';
+import type { OperationLog, OperationLogEntry } from './operation.log';
+import type { RollbackStep } from './rollback';
 
 export interface PipelineOpts {
   semver: string;
@@ -34,6 +36,7 @@ export interface PipelineDeps {
   config: VersioningsConfig;
   rollbackManager: RollbackManager;
   artifactChecker: ArtifactChecker;
+  operationLog?: OperationLog;
 }
 
 /**
@@ -54,7 +57,7 @@ export async function runPipeline(
   opts: PipelineOpts,
   deps: PipelineDeps,
 ): Promise<PipelineResult | DryRunPlan> {
-  const { executor, config, rollbackManager, artifactChecker } = deps;
+  const { executor, config, rollbackManager, artifactChecker, operationLog } = deps;
   const { semver, branch, push, preid, dryRun } = opts;
 
   // --- Stage 1: Validate input parameters ---
@@ -167,43 +170,42 @@ export async function runPipeline(
   }
 
   // --- Stages 8–12: Mutation steps with rollback on error ---
+  const executedSteps: RollbackStep[] = [];
   try {
     // Stage 8: npm version bump (real)
     await executor.run(npmCmd);
-    rollbackManager.record({
-      type: STEP_TYPES.NPM_VERSION_BUMP,
-      meta: {},
-    });
+    const npmStep: RollbackStep = { type: STEP_TYPES.NPM_VERSION_BUMP, meta: {} };
+    rollbackManager.record(npmStep);
+    executedSteps.push(npmStep);
 
     // Stage 9: Create branch
     await executor.run(`git checkout -b ${branchName}`);
-    rollbackManager.record({
-      type: STEP_TYPES.BRANCH_CREATED,
-      meta: { name: branchName },
-    });
+    const branchStep: RollbackStep = { type: STEP_TYPES.BRANCH_CREATED, meta: { name: branchName } };
+    rollbackManager.record(branchStep);
+    executedSteps.push(branchStep);
 
     // Stage 10: Create annotated tag
     await executor.run(`git tag --annotate ${tagName} --message "${commitMessage}"`);
-    rollbackManager.record({
-      type: STEP_TYPES.TAG_CREATED,
-      meta: { name: tagName },
-    });
+    const tagStep: RollbackStep = { type: STEP_TYPES.TAG_CREATED, meta: { name: tagName } };
+    rollbackManager.record(tagStep);
+    executedSteps.push(tagStep);
 
     // Stage 11: Commit all changes
     await executor.run(`git commit --all --message "${commitMessage}"`);
-    rollbackManager.record({
-      type: STEP_TYPES.COMMITTED,
-      meta: {},
-    });
+    const commitStep: RollbackStep = { type: STEP_TYPES.COMMITTED, meta: {} };
+    rollbackManager.record(commitStep);
+    executedSteps.push(commitStep);
 
     // Stage 12: Push (optional)
     let pullRequestUrl: string | null = null;
     if (push) {
       await executor.run(`git push ${config.git.remote} ${branchName} --follow-tags`);
-      rollbackManager.record({
+      const pushStep: RollbackStep = {
         type: STEP_TYPES.PUSHED,
         meta: { branch: branchName, tag: tagName, remote: config.git.remote },
-      });
+      };
+      rollbackManager.record(pushStep);
+      executedSteps.push(pushStep);
 
       // Stage 13: Generate PR URL
       pullRequestUrl = generatePullRequestUrl(branchName, config);
@@ -220,10 +222,55 @@ export async function runPipeline(
       pullRequestUrl,
       exitCode: EXIT_CODES.SUCCESS,
     };
+
+    // Save operation log (best-effort)
+    if (operationLog) {
+      try {
+        const entry: OperationLogEntry = {
+          schemaVersion: 1,
+          timestamp: new Date().toISOString(),
+          semver,
+          version: nextVersion,
+          previousVersion: currentVersion,
+          branch: branchName,
+          tag: tagName,
+          steps: executedSteps,
+          result: 'success',
+        };
+        await operationLog.save(entry);
+      } catch (_) {
+        // best-effort: do not let log failure affect pipeline result
+      }
+    }
+
     return result;
   } catch (error: any) {
     // Rollback all recorded mutation steps
     const rollbackResult = await rollbackManager.rollback();
+
+    // Save operation log on failure (best-effort)
+    if (operationLog) {
+      try {
+        const entry: OperationLogEntry = {
+          schemaVersion: 1,
+          timestamp: new Date().toISOString(),
+          semver,
+          version: nextVersion,
+          previousVersion: currentVersion,
+          branch: branchName,
+          tag: tagName,
+          steps: executedSteps,
+          result: 'failed',
+          error: {
+            code: error.code ?? EXIT_CODES.COMMAND_FAILED,
+            message: error.message || String(error),
+          },
+        };
+        await operationLog.save(entry);
+      } catch (_) {
+        // best-effort: do not let log failure mask original error
+      }
+    }
 
     if (!rollbackResult.success) {
       throw new VersioningsError(

@@ -14,11 +14,32 @@ describe('EXIT_CODES', () => {
       COMMAND_FAILED: 5,
       NETWORK_ERROR: 6,
       INCOMPLETE_ROLLBACK: 7,
+      NO_OPERATION: 8,
+      USER_CANCELLED: 9,
     });
   });
 
-  test('has exactly 8 entries', () => {
-    expect(Object.keys(EXIT_CODES)).toHaveLength(8);
+  test('has exactly 10 entries', () => {
+    expect(Object.keys(EXIT_CODES)).toHaveLength(10);
+  });
+
+  test('existing codes 0–7 are unchanged', () => {
+    expect(EXIT_CODES.SUCCESS).toBe(0);
+    expect(EXIT_CODES.CONFIG_ERROR).toBe(1);
+    expect(EXIT_CODES.DIRTY_TREE).toBe(2);
+    expect(EXIT_CODES.INVALID_ARGS).toBe(3);
+    expect(EXIT_CODES.ARTIFACT_CONFLICT).toBe(4);
+    expect(EXIT_CODES.COMMAND_FAILED).toBe(5);
+    expect(EXIT_CODES.NETWORK_ERROR).toBe(6);
+    expect(EXIT_CODES.INCOMPLETE_ROLLBACK).toBe(7);
+  });
+
+  test('NO_OPERATION exit code equals 8', () => {
+    expect(EXIT_CODES.NO_OPERATION).toBe(8);
+  });
+
+  test('USER_CANCELLED exit code equals 9', () => {
+    expect(EXIT_CODES.USER_CANCELLED).toBe(9);
   });
 
   test('is frozen (immutable)', () => {

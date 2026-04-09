@@ -106,3 +106,202 @@ describe('createReporter — human-readable mode', () => {
     expect(output).toContain('expectedPath');
   });
 });
+
+// --- Fixtures for new reporter methods ---
+
+import type { ValidateResult, DoctorCheck } from '../../reporter';
+import type { ConfigProvenance } from '../../config.merger';
+
+const validateResultPass: ValidateResult = {
+  valid: true,
+  checks: [
+    { name: 'config', status: 'pass', details: 'Configuration is valid' },
+    { name: 'git-remote', status: 'warn', details: 'Remote not verified' },
+  ],
+  provenance: {
+    'git.platform': { value: 'github', source: 'version.json' },
+  },
+};
+
+const validateResultFail: ValidateResult = {
+  valid: false,
+  checks: [
+    { name: 'config', status: 'fail', details: 'Missing required field git.url' },
+    { name: 'git-remote', status: 'pass', details: 'Remote OK' },
+  ],
+  provenance: {},
+};
+
+const doctorChecks: DoctorCheck[] = [
+  { name: 'Node.js', status: 'pass', found: 'v20.11.0', expected: '>=16.0.0' },
+  { name: 'Git', status: 'pass', found: '2.43.0' },
+  { name: 'Config', status: 'fail', found: 'missing', expected: 'version.json or .versioningsrc' },
+  { name: 'package.json', status: 'warn', found: 'present, no versionings section' },
+];
+
+const provenance: ConfigProvenance = {
+  'git.url': { value: 'https://github.com/org/repo', source: '.versioningsrc' },
+  'git.platform': { value: 'github', source: 'env' },
+  'git.pr.target': { value: 'main', source: 'defaults' },
+};
+
+// --- JSON mode tests for new methods ---
+
+describe('createReporter — JSON mode (new methods)', () => {
+  const reporter = createReporter({ json: true });
+  // eslint-disable-next-line no-control-regex
+  const ansiPattern = /\x1b\[/;
+
+  test('reportValidation — valid JSON with all fields', () => {
+    const output = reporter.reportValidation(validateResultPass);
+    const parsed = JSON.parse(output);
+    expect(parsed.valid).toBe(true);
+    expect(parsed.checks).toHaveLength(2);
+    expect(parsed.checks[0].name).toBe('config');
+    expect(parsed.checks[0].status).toBe('pass');
+    expect(parsed.provenance).toBeDefined();
+    expect(parsed.provenance['git.platform'].source).toBe('version.json');
+  });
+
+  test('reportValidation — no ANSI in JSON, ends with newline', () => {
+    const output = reporter.reportValidation(validateResultPass);
+    expect(ansiPattern.test(output)).toBe(false);
+    expect(output).toMatch(/\n$/);
+  });
+
+  test('reportDoctor — valid JSON array with all checks', () => {
+    const output = reporter.reportDoctor(doctorChecks);
+    const parsed = JSON.parse(output);
+    expect(Array.isArray(parsed)).toBe(true);
+    expect(parsed).toHaveLength(4);
+    expect(parsed[0].name).toBe('Node.js');
+    expect(parsed[0].found).toBe('v20.11.0');
+    expect(parsed[0].expected).toBe('>=16.0.0');
+    expect(parsed[2].status).toBe('fail');
+  });
+
+  test('reportDoctor — no ANSI in JSON, ends with newline', () => {
+    const output = reporter.reportDoctor(doctorChecks);
+    expect(ansiPattern.test(output)).toBe(false);
+    expect(output).toMatch(/\n$/);
+  });
+
+  test('reportProvenance — valid JSON with field paths and sources', () => {
+    const output = reporter.reportProvenance(provenance);
+    const parsed = JSON.parse(output);
+    expect(parsed['git.platform'].value).toBe('github');
+    expect(parsed['git.platform'].source).toBe('env');
+    expect(parsed['git.url'].source).toBe('.versioningsrc');
+  });
+
+  test('reportProvenance — no ANSI in JSON, ends with newline', () => {
+    const output = reporter.reportProvenance(provenance);
+    expect(ansiPattern.test(output)).toBe(false);
+    expect(output).toMatch(/\n$/);
+  });
+
+  test('reportConfirmPlan — valid JSON with all DryRunPlan fields', () => {
+    const output = reporter.reportConfirmPlan(dryRunPlan);
+    const parsed = JSON.parse(output);
+    expect(parsed.dryRun).toBe(true);
+    expect(parsed.currentVersion).toBe('1.2.2');
+    expect(parsed.nextVersion).toBe('1.2.3');
+    expect(parsed.semver).toBe('patch');
+    expect(parsed.branch).toBe('version/patch/1.2.3/fix-login');
+    expect(parsed.tag).toBe('1.2.3--fix-login');
+    expect(parsed.steps).toEqual([
+      'npm --no-git-tag-version version patch',
+      'git checkout -b ...',
+    ]);
+  });
+
+  test('reportConfirmPlan — no ANSI in JSON, ends with newline', () => {
+    const output = reporter.reportConfirmPlan(dryRunPlan);
+    expect(ansiPattern.test(output)).toBe(false);
+    expect(output).toMatch(/\n$/);
+  });
+});
+
+// --- Human-readable mode tests for new methods ---
+
+describe('createReporter — human-readable mode (new methods)', () => {
+  const reporter = createReporter({ json: false });
+
+  test('reportValidation — shows "passed" with check icons for valid result', () => {
+    const output = reporter.reportValidation(validateResultPass);
+    expect(output).toContain('passed');
+    expect(output).toContain('✓');
+    expect(output).toContain('⚠');
+    expect(output).toContain('config');
+    expect(output).toContain('Configuration is valid');
+  });
+
+  test('reportValidation — shows "failed" with fail icon for invalid result', () => {
+    const output = reporter.reportValidation(validateResultFail);
+    expect(output).toContain('failed');
+    expect(output).toContain('✗');
+    expect(output).toContain('Missing required field git.url');
+  });
+
+  test('reportDoctor — shows status icons, found and expected values', () => {
+    const output = reporter.reportDoctor(doctorChecks);
+    expect(output).toContain('✓');
+    expect(output).toContain('✗');
+    expect(output).toContain('⚠');
+    expect(output).toContain('Node.js');
+    expect(output).toContain('found: v20.11.0');
+    expect(output).toContain('expected: >=16.0.0');
+  });
+
+  test('reportDoctor — check without expected omits expected field', () => {
+    const output = reporter.reportDoctor(doctorChecks);
+    // "Git" check has no expected — should show "found:" but not "expected:" on that line
+    const gitLine = output.split('\n').find((l: string) => l.includes('Git'));
+    expect(gitLine).toContain('found: 2.43.0');
+    expect(gitLine).not.toContain('expected:');
+  });
+
+  test('reportProvenance — shows sorted field paths with sources', () => {
+    const output = reporter.reportProvenance(provenance);
+    expect(output).toContain('git.platform');
+    expect(output).toContain('github');
+    expect(output).toContain('source: env');
+    expect(output).toContain('git.url');
+    expect(output).toContain('source: .versioningsrc');
+    // Verify sorted order: git.platform before git.pr.target before git.url
+    const lines = output.split('\n');
+    const platformIdx = lines.findIndex((l: string) => l.includes('git.platform'));
+    const prTargetIdx = lines.findIndex((l: string) => l.includes('git.pr.target'));
+    const urlIdx = lines.findIndex((l: string) => l.includes('git.url'));
+    expect(platformIdx).toBeLessThan(prTargetIdx);
+    expect(prTargetIdx).toBeLessThan(urlIdx);
+  });
+
+  test('reportConfirmPlan — shows plan details with colored values', () => {
+    const output = reporter.reportConfirmPlan(dryRunPlan);
+    expect(output).toContain('The following operations will be performed');
+    expect(output).toContain('1.2.2');
+    expect(output).toContain('1.2.3');
+    expect(output).toContain('version/patch/1.2.3/fix-login');
+    expect(output).toContain('1.2.3--fix-login');
+    expect(output).toContain('Steps:');
+    // ANSI colors should be present in human-readable mode
+    // eslint-disable-next-line no-control-regex
+    expect(/\x1b\[/.test(output)).toBe(true);
+  });
+
+  test('reportConfirmPlan — pullRequestUrl null is omitted', () => {
+    const output = reporter.reportConfirmPlan(dryRunPlan);
+    expect(output).not.toContain('Pull request URL');
+  });
+
+  test('reportConfirmPlan — pullRequestUrl shown when present', () => {
+    const planWithPR: DryRunPlan = {
+      ...dryRunPlan,
+      pullRequestUrl: 'https://github.com/user/repo/compare/develop...branch',
+    };
+    const output = reporter.reportConfirmPlan(planWithPR);
+    expect(output).toContain('Pull request URL');
+    expect(output).toContain('https://github.com/user/repo/compare/develop...branch');
+  });
+});

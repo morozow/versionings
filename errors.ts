@@ -10,6 +10,8 @@ export interface ExitCodes {
   readonly COMMAND_FAILED: 5;
   readonly NETWORK_ERROR: 6;
   readonly INCOMPLETE_ROLLBACK: 7;
+  readonly NO_OPERATION: 8;
+  readonly USER_CANCELLED: 9;
 }
 
 export const EXIT_CODES: ExitCodes = Object.freeze({
@@ -21,6 +23,8 @@ export const EXIT_CODES: ExitCodes = Object.freeze({
   COMMAND_FAILED: 5 as const,
   NETWORK_ERROR: 6 as const,
   INCOMPLETE_ROLLBACK: 7 as const,
+  NO_OPERATION: 8 as const,
+  USER_CANCELLED: 9 as const,
 });
 
 export class VersioningsError extends Error {

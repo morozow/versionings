@@ -234,4 +234,237 @@ export function loadAndValidateConfig(configPath: string): VersioningsConfig {
   return config;
 }
 
+// ---------------------------------------------------------------------------
+// validateWithProvenance — strict / default mode validation with provenance
+// ---------------------------------------------------------------------------
+
+export interface ValidationWarning {
+  path: string;
+  message: string;
+  source?: string;
+}
+
+export interface ValidationResult {
+  valid: boolean;
+  warnings: ValidationWarning[];
+}
+
+/**
+ * Recursively clone a JSON Schema, setting `additionalProperties` to the
+ * given value on every object-typed node that declares `properties`.
+ */
+function cloneSchemaWithAdditionalProps(
+  node: Record<string, any>,
+  additionalProperties: boolean,
+): Record<string, any> {
+  const clone: Record<string, any> = {};
+  for (const key of Object.keys(node)) {
+    const val = node[key];
+    if (key === 'additionalProperties') {
+      clone[key] = additionalProperties;
+    } else if (key === 'properties' && typeof val === 'object' && val !== null) {
+      // Recurse into each property definition
+      const propsClone: Record<string, any> = {};
+      for (const propName of Object.keys(val)) {
+        propsClone[propName] = cloneSchemaWithAdditionalProps(val[propName], additionalProperties);
+      }
+      clone[key] = propsClone;
+      // Ensure additionalProperties is set on this object node
+      if (!('additionalProperties' in node)) {
+        clone['additionalProperties'] = additionalProperties;
+      }
+    } else if (typeof val === 'object' && val !== null && !Array.isArray(val)) {
+      clone[key] = cloneSchemaWithAdditionalProps(val, additionalProperties);
+    } else {
+      clone[key] = val;
+    }
+  }
+  return clone;
+}
+
+/**
+ * Collect all keys from a config object that are not declared in the schema.
+ * Returns an array of dot-notation paths.
+ */
+function collectUnknownPaths(
+  config: Record<string, any>,
+  schemaNode: Record<string, any>,
+  prefix: string,
+): string[] {
+  const unknown: string[] = [];
+  const schemaProps = schemaNode.properties || {};
+
+  for (const key of Object.keys(config)) {
+    const fullPath = prefix ? `${prefix}.${key}` : key;
+    if (!(key in schemaProps)) {
+      unknown.push(fullPath);
+    } else {
+      const val = config[key];
+      const propSchema = schemaProps[key];
+      if (
+        val !== null &&
+        typeof val === 'object' &&
+        !Array.isArray(val) &&
+        propSchema &&
+        propSchema.type === 'object' &&
+        propSchema.properties
+      ) {
+        unknown.push(...collectUnknownPaths(val, propSchema, fullPath));
+      }
+    }
+  }
+
+  return unknown;
+}
+
+/**
+ * Look up the source of a field path in provenance.
+ * Falls back to parent paths if exact path not found.
+ */
+function findSource(
+  provenance: Record<string, { value: any; source: string }>,
+  fieldPath: string,
+): string {
+  // Exact match
+  if (provenance[fieldPath]) {
+    return provenance[fieldPath].source;
+  }
+  // Walk up parent paths
+  const parts = fieldPath.split('.');
+  for (let i = parts.length - 1; i > 0; i--) {
+    const parentPath = parts.slice(0, i).join('.');
+    if (provenance[parentPath]) {
+      return provenance[parentPath].source;
+    }
+  }
+  return 'unknown';
+}
+
+/**
+ * Format a schema constraint description for a given schema node.
+ */
+function describeExpected(schemaNode: Record<string, any> | undefined): string {
+  if (!schemaNode) return 'not defined in schema';
+  const parts: string[] = [];
+  if (schemaNode.type) parts.push(`type: ${schemaNode.type}`);
+  if (schemaNode.enum) parts.push(`enum: ${JSON.stringify(schemaNode.enum)}`);
+  if (schemaNode.minLength !== undefined) parts.push(`minLength: ${schemaNode.minLength}`);
+  if (schemaNode.maxLength !== undefined) parts.push(`maxLength: ${schemaNode.maxLength}`);
+  if (schemaNode.minimum !== undefined) parts.push(`minimum: ${schemaNode.minimum}`);
+  if (schemaNode.maximum !== undefined) parts.push(`maximum: ${schemaNode.maximum}`);
+  return parts.length > 0 ? parts.join(', ') : 'valid value';
+}
+
+/**
+ * Resolve a schema property node by dot-notation path.
+ */
+function resolveSchemaNode(
+  schemaRoot: Record<string, any>,
+  fieldPath: string,
+): Record<string, any> | undefined {
+  const parts = fieldPath.split('.');
+  let node = schemaRoot;
+  for (const part of parts) {
+    if (!node.properties || !node.properties[part]) return undefined;
+    node = node.properties[part];
+  }
+  return node;
+}
+
+/**
+ * Validates a merged config object with provenance tracking.
+ *
+ * - strict=true: additionalProperties: false at all levels → throws VersioningsError(CONFIG_ERROR) on unknown fields
+ * - strict=false (default): additionalProperties: true → returns warnings for unknown fields with sources
+ *
+ * In both modes, type/format/required errors always throw.
+ *
+ * @param config — merged config object
+ * @param provenance — provenance map from config.merger (fieldPath → { value, source })
+ * @param strict — whether to treat unknown fields as errors
+ * @returns ValidationResult with warnings (default mode) or throws (strict mode)
+ * @throws VersioningsError(CONFIG_ERROR) — on schema violations or unknown fields in strict mode
+ */
+export function validateWithProvenance(
+  config: Record<string, any>,
+  provenance: Record<string, { value: any; source: string }>,
+  strict: boolean = false,
+): ValidationResult {
+  const warnings: ValidationWarning[] = [];
+
+  // 1. Always validate with permissive schema first (type/required/enum errors)
+  const permissiveSchema = cloneSchemaWithAdditionalProps(schema, true);
+  const ajvPermissive = new Ajv({ allErrors: true });
+  const validatePermissive = ajvPermissive.compile(permissiveSchema);
+  const permissiveValid = validatePermissive(config);
+
+  if (!permissiveValid && validatePermissive.errors) {
+    // Type/required/enum errors — always throw regardless of strict mode
+    const errorLines = validatePermissive.errors.map((err) => {
+      const fieldPath = err.instancePath
+        ? err.instancePath.replace(/^\//, '').replace(/\//g, '.')
+        : '/';
+      const source = findSource(provenance, fieldPath);
+      const schemaNode = resolveSchemaNode(schema, fieldPath);
+      const expected = describeExpected(schemaNode);
+      return `  ${fieldPath}: ${err.message} (expected ${expected})\n    source: ${source}`;
+    });
+
+    throw new VersioningsError(
+      EXIT_CODES.CONFIG_ERROR,
+      `Configuration does not match schema.\n${errorLines.join('\n')}`,
+      {
+        validationErrors: validatePermissive.errors.map((err) => {
+          const fieldPath = err.instancePath
+            ? err.instancePath.replace(/^\//, '').replace(/\//g, '.')
+            : '/';
+          return {
+            path: err.instancePath || '/',
+            message: err.message,
+            params: err.params,
+            source: findSource(provenance, fieldPath),
+            expected: describeExpected(resolveSchemaNode(schema, fieldPath)),
+          };
+        }),
+      },
+    );
+  }
+
+  // 2. Detect unknown fields
+  const unknownPaths = collectUnknownPaths(config, schema, '');
+
+  if (unknownPaths.length > 0) {
+    if (strict) {
+      // Strict mode: throw error with all unknown fields
+      const errorLines = unknownPaths.map((p) => {
+        const source = findSource(provenance, p);
+        return `  ${p}: unknown field\n    source: ${source}`;
+      });
+
+      throw new VersioningsError(
+        EXIT_CODES.CONFIG_ERROR,
+        `Configuration contains unknown fields.\n${errorLines.join('\n')}`,
+        {
+          unknownFields: unknownPaths.map((p) => ({
+            path: p,
+            source: findSource(provenance, p),
+          })),
+        },
+      );
+    } else {
+      // Default mode: collect warnings
+      for (const p of unknownPaths) {
+        const source = findSource(provenance, p);
+        warnings.push({
+          path: p,
+          message: `Unknown field "${p}"`,
+          source,
+        });
+      }
+    }
+  }
+
+  return { valid: true, warnings };
+}
+
 export { schema };

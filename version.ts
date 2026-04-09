@@ -2,45 +2,182 @@
 // Copyright (c) 2018-present Raman Marozau
 
 import * as path from 'path';
+import { loadConfig } from './config.loader';
 import { loadAndValidateConfig } from './config.validator';
 import { createExecutor } from './executor';
 import { createRollbackManager } from './rollback';
 import { createArtifactChecker } from './artifact.checker';
 import { createReporter } from './reporter';
 import { runPipeline } from './pipeline';
+import { createInteractionManager } from './interaction.manager';
+import { createOperationLog } from './operation.log';
+import { runInitCommand } from './init.command';
+import { runValidateCommand } from './validate.command';
+import { runPlanCommand } from './plan.command';
+import { runReleaseCommand } from './release.command';
+import { runRollbackCommand } from './rollback.command';
+import { runDoctorCommand } from './doctor.command';
+import { SUBCOMMANDS, preprocessArgv, buildCli } from './command.router';
 import { EXIT_CODES, VersioningsError } from './errors';
 import type { PipelineResult, DryRunPlan } from './reporter';
 
-// Parse CLI arguments
-const args = require('yargs')
-  .option('semver', { type: 'string', demandOption: true })
-  .option('branch', { type: 'string', demandOption: true })
-  .option('push', { type: 'boolean', default: false })
-  .option('preid', { type: 'string' })
-  .option('dry-run', { type: 'boolean', default: false })
-  .option('json', { type: 'boolean', default: false })
-  .option('verbose', { type: 'boolean', default: false })
-  .argv;
+// ---------------------------------------------------------------------------
+// --print-config handler
+// ---------------------------------------------------------------------------
 
-async function main(): Promise<void> {
-  // 1. Check Node.js version
-  const [major] = process.versions.node.split('.').map(Number);
-  if (major < 18) {
-    console.error(`Node.js >= 18 required. Current: ${process.version}`);
-    process.exit(EXIT_CODES.CONFIG_ERROR);
+async function handlePrintConfig(args: any): Promise<boolean> {
+  if (!args['print-config']) return false;
+
+  const cwd = process.cwd();
+  const env = process.env as Record<string, string | undefined>;
+  const reporter = createReporter({ json: args.json });
+
+  const loadResult = loadConfig({
+    cwd,
+    env,
+    strict: args.strict,
+  });
+
+  // Print warnings to stderr
+  for (const w of loadResult.warnings) {
+    process.stderr.write(w + '\n');
   }
 
-  // 2. Load and validate config
-  const config = loadAndValidateConfig(path.join(process.cwd(), 'version.json'));
+  const output = reporter.reportProvenance(loadResult.provenance);
+  process.stdout.write(output + '\n');
+  process.exit(EXIT_CODES.SUCCESS);
+  return true; // unreachable, but satisfies TS
+}
 
-  // 3. Create dependencies via DI
+// ---------------------------------------------------------------------------
+// Subcommand handlers
+// ---------------------------------------------------------------------------
+
+async function handleInit(args: any): Promise<void> {
+  const interactionManager = createInteractionManager(
+    {
+      ci: args.ci,
+      nonInteractive: args['non-interactive'],
+      yes: args.yes,
+      isTTY: Boolean(process.stdout.isTTY),
+    },
+    process.stdin,
+    process.stdout,
+  );
+
+  const executor = createExecutor({ verbose: args.verbose });
+
+  await runInitCommand(
+    { format: args.format },
+    {
+      interactionManager,
+      executor,
+      cwd: process.cwd(),
+      stdin: process.stdin,
+      stdout: process.stdout,
+    },
+  );
+}
+
+async function handleValidate(args: any): Promise<void> {
+  const cwd = process.cwd();
+  const env = process.env as Record<string, string | undefined>;
+  const executor = createExecutor({ verbose: args.verbose });
+  const reporter = createReporter({ json: args.json });
+
+  const result = await runValidateCommand(
+    { json: args.json, strict: args.strict },
+    {
+      configLoader: loadConfig,
+      executor,
+      reporter,
+      cwd,
+      env,
+      stdout: process.stdout,
+    },
+  );
+
+  if (!result.valid) {
+    process.exit(EXIT_CODES.CONFIG_ERROR);
+  }
+}
+
+async function handlePlan(args: any): Promise<void> {
+  const cwd = process.cwd();
+  const env = process.env as Record<string, string | undefined>;
+
+  // Load config via new loader for warnings/provenance
+  const configResult = loadConfig({ cwd, env, strict: args.strict });
+  for (const w of configResult.warnings) {
+    process.stderr.write(w + '\n');
+  }
+
+  // Load full config via legacy loader for pipeline compatibility
+  // (pipeline needs config.common.messages and config.package.semver)
+  const config = loadAndValidateConfig(path.join(cwd, 'version.json'));
+
   const executor = createExecutor({ verbose: args.verbose });
   const rollbackManager = createRollbackManager(executor);
   const artifactChecker = createArtifactChecker(executor);
   const reporter = createReporter({ json: args.json });
 
-  // 4. Run pipeline
-  const result = await runPipeline(
+  await runPlanCommand(
+    {
+      semver: args.semver,
+      branch: args.branch,
+      push: args.push,
+      preid: args.preid,
+      json: args.json,
+    },
+    {
+      runPipeline,
+      pipelineDeps: {
+        executor,
+        config,
+        rollbackManager,
+        artifactChecker,
+      },
+      reporter,
+      stdout: process.stdout,
+    },
+  );
+}
+
+async function handleRelease(args: any): Promise<void> {
+  const cwd = process.cwd();
+  const env = process.env as Record<string, string | undefined>;
+
+  // Load config via new loader for warnings/provenance
+  const configResult = loadConfig({ cwd, env, strict: args.strict });
+  for (const w of configResult.warnings) {
+    process.stderr.write(w + '\n');
+  }
+
+  // Load full config via legacy loader for pipeline compatibility
+  // (pipeline needs config.common.messages and config.package.semver)
+  const config = loadAndValidateConfig(path.join(cwd, 'version.json'));
+
+  const executor = createExecutor({ verbose: args.verbose });
+  const rollbackManager = createRollbackManager(executor);
+  const artifactChecker = createArtifactChecker(executor);
+  const reporter = createReporter({ json: args.json });
+
+  const interactionManager = createInteractionManager(
+    {
+      ci: args.ci,
+      nonInteractive: args['non-interactive'],
+      yes: args.yes,
+      isTTY: Boolean(process.stdout.isTTY),
+    },
+    process.stdin,
+    process.stdout,
+  );
+
+  const operationLog = createOperationLog(
+    path.join(cwd, '.versionings', 'operations'),
+  );
+
+  const result = await runReleaseCommand(
     {
       semver: args.semver,
       branch: args.branch,
@@ -50,26 +187,181 @@ async function main(): Promise<void> {
       json: args.json,
       verbose: args.verbose,
     },
-    { executor, config, rollbackManager, artifactChecker },
+    {
+      runPipeline,
+      pipelineDeps: {
+        executor,
+        config,
+        rollbackManager,
+        artifactChecker,
+      },
+      interactionManager,
+      operationLog,
+      reporter,
+      stdout: process.stdout,
+    },
   );
 
-  // 5. Output result via reporter
-  if ('dryRun' in result && result.dryRun) {
-    process.stdout.write(reporter.reportDryRun(result as DryRunPlan));
-  } else {
-    process.stdout.write(reporter.reportSuccess(result as PipelineResult));
-    if ((result as PipelineResult).pullRequestUrl && !args.json) {
+  // Open PR URL in browser (non-JSON, non-dry-run, has PR URL)
+  if (
+    !args.json
+    && !args['dry-run']
+    && 'pullRequestUrl' in result
+    && (result as PipelineResult).pullRequestUrl
+  ) {
+    try {
       const open = require('open');
       await open((result as PipelineResult).pullRequestUrl);
+    } catch (_) {
+      // Best-effort: don't fail if browser can't open
+    }
+  }
+}
+
+async function handleRollback(args: any): Promise<void> {
+  const cwd = process.cwd();
+  const executor = createExecutor({ verbose: args.verbose });
+  const reporter = createReporter({ json: args.json });
+
+  const interactionManager = createInteractionManager(
+    {
+      ci: args.ci,
+      nonInteractive: args['non-interactive'],
+      yes: args.yes,
+      isTTY: Boolean(process.stdout.isTTY),
+    },
+    process.stdin,
+    process.stdout,
+  );
+
+  const operationLog = createOperationLog(
+    path.join(cwd, '.versionings', 'operations'),
+  );
+
+  await runRollbackCommand(
+    {
+      from: args.from,
+      json: args.json,
+      ci: args.ci,
+      yes: args.yes,
+    },
+    {
+      operationLog,
+      executor,
+      createRollbackManager: (exec) => createRollbackManager(exec),
+      interactionManager,
+      reporter,
+      stdout: process.stdout,
+    },
+  );
+}
+
+async function handleDoctor(args: any): Promise<void> {
+  const cwd = process.cwd();
+  const env = process.env as Record<string, string | undefined>;
+  const executor = createExecutor({ verbose: args.verbose });
+  const reporter = createReporter({ json: args.json });
+
+  const checks = await runDoctorCommand(
+    { json: args.json },
+    {
+      configLoader: loadConfig,
+      executor,
+      reporter,
+      cwd,
+      env,
+      stdout: process.stdout,
+    },
+  );
+
+  const hasFail = checks.some((c) => c.status === 'fail');
+  if (hasFail) {
+    process.exit(EXIT_CODES.CONFIG_ERROR);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
+
+async function main(): Promise<void> {
+  // 1. Check Node.js version
+  const [major] = process.versions.node.split('.').map(Number);
+  if (major < 18) {
+    console.error(`Node.js >= 18 required. Current: ${process.version}`);
+    process.exit(EXIT_CODES.CONFIG_ERROR);
+  }
+
+  // 2. Preprocess argv for backward compatibility
+  const rawArgv = process.argv.slice(2);
+  const processedArgv = preprocessArgv(rawArgv);
+
+  // 3. Parse with yargs
+  const cli = buildCli(processedArgv);
+  const args = cli.parse();
+
+  // 4. Handle --print-config (global, runs before any subcommand)
+  await handlePrintConfig(args);
+
+  // 5. Determine which command to run
+  const command = args._[0] as string | undefined;
+
+  if (!command) {
+    // No subcommand and no --semver/--branch (those would have been
+    // preprocessed into 'release') → show help
+    cli.showHelp();
+    return;
+  }
+
+  // 6. Route to subcommand handler
+  switch (command) {
+    case 'init':
+      await handleInit(args);
+      break;
+    case 'validate':
+      await handleValidate(args);
+      break;
+    case 'plan':
+      await handlePlan(args);
+      break;
+    case 'release':
+      await handleRelease(args);
+      break;
+    case 'rollback':
+      await handleRollback(args);
+      break;
+    case 'doctor':
+      await handleDoctor(args);
+      break;
+    default: {
+      // Should not reach here due to strictCommands, but just in case
+      const availableList = SUBCOMMANDS.map((c) => `  ${c}`).join('\n');
+      throw new VersioningsError(
+        EXIT_CODES.INVALID_ARGS,
+        `Unknown command: ${command}\n\nAvailable commands:\n${availableList}`,
+      );
     }
   }
 
-  // 6. Exit with success
   process.exit(EXIT_CODES.SUCCESS);
 }
 
 main().catch(async (err: any) => {
-  const reporter = createReporter({ json: args?.json ?? false });
+  const reporter = createReporter({ json: false });
+  try {
+    // Try to detect --json from argv for error formatting
+    const hasJson = process.argv.includes('--json');
+    if (hasJson) {
+      const jsonReporter = createReporter({ json: true });
+      if (err instanceof VersioningsError) {
+        process.stderr.write(jsonReporter.reportError(err));
+        process.exit(err.code);
+      }
+    }
+  } catch (_) {
+    // Fall through to default handling
+  }
+
   if (err instanceof VersioningsError) {
     process.stderr.write(reporter.reportError(err));
     process.exit(err.code);

@@ -27,11 +27,13 @@
   },
   "dependencies": {
     "ajv": "^8.17.1",
+    "js-yaml": "^4.1.0",
     "open": "^8.4.2",
     "yargs": "^17.7.2"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^25.5.0",
     "esbuild": "^0.27.4",
     "esbuild-jest": "^0.5.0",

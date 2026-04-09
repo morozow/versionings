@@ -20,12 +20,12 @@ const arbDetails = fc.oneof(
 
 describe('Property 9: Exit codes and error format', () => {
 
-  test('code is always in range 0-7 and is one of EXIT_CODES values', () => {
+  test('code is always in range 0-9 and is one of EXIT_CODES values', () => {
     fc.assert(
       fc.property(arbExitCode, arbMessage, arbDetails, (code, message, details) => {
         const err = new VersioningsError(code, message, details);
         expect(err.code).toBeGreaterThanOrEqual(0);
-        expect(err.code).toBeLessThanOrEqual(7);
+        expect(err.code).toBeLessThanOrEqual(9);
         expect(exitCodeValues).toContain(err.code);
       }),
       { numRuns: 100 }
