@@ -19,6 +19,15 @@ import { runRollbackCommand } from './rollback.command';
 import { runDoctorCommand } from './doctor.command';
 import { SUBCOMMANDS, preprocessArgv, buildCli } from './command.router';
 import { EXIT_CODES, VersioningsError } from './errors';
+import { resolveAuth, maskToken } from './auth.resolver';
+import { createSCMRegistry } from './scm.registry';
+import { createHttpClient } from './http.client';
+import { createUrlParser } from './url.parser';
+import { createGitHubProvider } from './github.provider';
+import { createGitLabProvider } from './gitlab.provider';
+import { createBitbucketCloudProvider, createBitbucketServerProvider } from './bitbucket.provider';
+import { createAzureDevOpsProvider } from './azure.provider';
+import type { PrCreatorDeps } from './pr.creator';
 import type { PipelineResult, DryRunPlan } from './reporter';
 
 // ---------------------------------------------------------------------------
@@ -43,10 +52,40 @@ async function handlePrintConfig(args: any): Promise<boolean> {
     process.stderr.write(w + '\n');
   }
 
-  const output = reporter.reportProvenance(loadResult.provenance);
+  // Mask token values in provenance before printing
+  const provenance = loadResult.provenance;
+  for (const key of Object.keys(provenance)) {
+    if (key === 'git.auth.token' && typeof provenance[key].value === 'string' && provenance[key].value) {
+      provenance[key] = { ...provenance[key], value: maskToken(provenance[key].value as string) };
+    }
+  }
+
+  const output = reporter.reportProvenance(provenance);
   process.stdout.write(output + '\n');
   process.exit(EXIT_CODES.SUCCESS);
   return true; // unreachable, but satisfies TS
+}
+
+// ---------------------------------------------------------------------------
+// PR Creator dependency builder
+// ---------------------------------------------------------------------------
+
+function buildPrCreatorDeps(): PrCreatorDeps {
+  const registry = createSCMRegistry();
+  registry.register('github', createGitHubProvider);
+  registry.register('github-enterprise', createGitHubProvider);
+  registry.register('bitbucket', createBitbucketCloudProvider);
+  registry.register('bitbucket-server', createBitbucketServerProvider);
+  registry.register('gitlab', createGitLabProvider);
+  registry.register('azure-devops', createAzureDevOpsProvider);
+
+  return {
+    registry,
+    httpClient: createHttpClient(),
+    urlParser: createUrlParser(),
+    resolveAuth,
+    env: process.env as Record<string, string | undefined>,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -128,6 +167,8 @@ async function handlePlan(args: any): Promise<void> {
       push: args.push,
       preid: args.preid,
       json: args.json,
+      prMode: args['pr-mode'],
+      noPr: args['no-pr'],
     },
     {
       runPipeline,
@@ -136,6 +177,7 @@ async function handlePlan(args: any): Promise<void> {
         config,
         rollbackManager,
         artifactChecker,
+        prCreator: buildPrCreatorDeps(),
       },
       reporter,
       stdout: process.stdout,
@@ -186,6 +228,8 @@ async function handleRelease(args: any): Promise<void> {
       dryRun: args['dry-run'],
       json: args.json,
       verbose: args.verbose,
+      prMode: args['pr-mode'],
+      noPr: args['no-pr'],
     },
     {
       runPipeline,
@@ -194,6 +238,7 @@ async function handleRelease(args: any): Promise<void> {
         config,
         rollbackManager,
         artifactChecker,
+        prCreator: buildPrCreatorDeps(),
       },
       interactionManager,
       operationLog,
@@ -202,18 +247,28 @@ async function handleRelease(args: any): Promise<void> {
     },
   );
 
-  // Open PR URL in browser (non-JSON, non-dry-run, has PR URL)
-  if (
-    !args.json
-    && !args['dry-run']
-    && 'pullRequestUrl' in result
-    && (result as PipelineResult).pullRequestUrl
-  ) {
-    try {
-      const open = require('open');
-      await open((result as PipelineResult).pullRequestUrl);
-    } catch (_) {
-      // Best-effort: don't fail if browser can't open
+  // Open PR URL in browser: only for fallback status (PR not yet created via API)
+  if (!args.json && !args['dry-run']) {
+    const pipelineResult = result as PipelineResult;
+    if (pipelineResult.pullRequest) {
+      // status === 'fallback' → open in browser (user needs to create PR manually)
+      // status === 'created' → PR already created via API, don't open browser
+      if (pipelineResult.pullRequest.status === 'fallback' && pipelineResult.pullRequest.url) {
+        try {
+          const open = require('open');
+          await open(pipelineResult.pullRequest.url);
+        } catch (_) {
+          // Best-effort: don't fail if browser can't open
+        }
+      }
+    } else if (pipelineResult.pullRequestUrl) {
+      // Backward compatibility: no pullRequest object, just pullRequestUrl
+      try {
+        const open = require('open');
+        await open(pipelineResult.pullRequestUrl);
+      } catch (_) {
+        // Best-effort: don't fail if browser can't open
+      }
     }
   }
 }

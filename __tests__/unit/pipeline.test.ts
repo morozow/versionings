@@ -31,6 +31,12 @@ jest.mock('../../version.utils', () => ({
     `https://github.com/user/repo/compare/develop...${branch}?expand=1`,
 }));
 
+// Mock pr.creator to control createPR behavior in tests
+const mockCreatePR = jest.fn();
+jest.mock('../../pr.creator', () => ({
+  createPR: (...args: any[]) => mockCreatePR(...args),
+}));
+
 const { runPipeline } = require('../../pipeline');
 
 const mockConfig = {
@@ -365,5 +371,163 @@ describe('runPipeline — operation log integration', () => {
     expect(result.success).toBe(true);
     expect(result.version).toBe('1.2.3');
     expect(operationLog.save).toHaveBeenCalledTimes(1);
+  });
+});
+
+
+// --- PR_Creator integration tests (Task 8.3) ---
+
+describe('runPipeline — PR_Creator integration', () => {
+  function createMockPrCreator() {
+    return {
+      registry: {} as any,
+      httpClient: {} as any,
+      urlParser: {} as any,
+      resolveAuth: jest.fn(() => ({ token: 'test-token', method: 'token' as const })),
+      env: {},
+    };
+  }
+
+  afterEach(() => {
+    mockCreatePR.mockReset();
+  });
+
+  test('pipeline with prCreator — API success returns pullRequest in result', async () => {
+    const prResult = {
+      url: 'https://github.com/user/repo/pull/42',
+      number: 42,
+      status: 'created' as const,
+      fallbackReason: null,
+      platform: 'github',
+      warnings: [],
+    };
+    mockCreatePR.mockResolvedValue(prResult);
+
+    const executor = createMockExecutor();
+    const rollback = createMockRollbackManager();
+    const artifactChecker = createMockArtifactChecker();
+    const prCreator = createMockPrCreator();
+
+    const result = await runPipeline(
+      { ...baseOpts, push: true },
+      { executor, config: mockConfig, rollbackManager: rollback, artifactChecker, prCreator },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.pullRequest).toBeDefined();
+    expect(result.pullRequest!.url).toBe('https://github.com/user/repo/pull/42');
+    expect(result.pullRequest!.number).toBe(42);
+    expect(result.pullRequest!.status).toBe('created');
+    expect(result.pullRequestUrl).toBe('https://github.com/user/repo/pull/42');
+    expect(mockCreatePR).toHaveBeenCalledTimes(1);
+  });
+
+  test('pipeline with prCreator — fallback returns pullRequest with fallback status', async () => {
+    const prResult = {
+      url: 'https://github.com/user/repo/compare/develop...branch',
+      number: null,
+      status: 'fallback' as const,
+      fallbackReason: 'no_token',
+      platform: 'github',
+      warnings: [],
+    };
+    mockCreatePR.mockResolvedValue(prResult);
+
+    const executor = createMockExecutor();
+    const rollback = createMockRollbackManager();
+    const artifactChecker = createMockArtifactChecker();
+    const prCreator = createMockPrCreator();
+
+    const result = await runPipeline(
+      { ...baseOpts, push: true },
+      { executor, config: mockConfig, rollbackManager: rollback, artifactChecker, prCreator },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.pullRequest).toBeDefined();
+    expect(result.pullRequest!.status).toBe('fallback');
+    expect(result.pullRequest!.fallbackReason).toBe('no_token');
+  });
+
+  test('pipeline without prCreator — backward compatibility uses generatePullRequestUrl', async () => {
+    const executor = createMockExecutor();
+    const rollback = createMockRollbackManager();
+    const artifactChecker = createMockArtifactChecker();
+
+    const result = await runPipeline(
+      { ...baseOpts, push: true },
+      { executor, config: mockConfig, rollbackManager: rollback, artifactChecker },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.pullRequestUrl).toContain('https://github.com/user/repo/compare/develop');
+    expect(result.pullRequest).toBeUndefined();
+    expect(mockCreatePR).not.toHaveBeenCalled();
+  });
+
+  test('--no-pr skips PR/MR creation entirely', async () => {
+    mockCreatePR.mockResolvedValue({
+      url: 'https://github.com/user/repo/pull/42',
+      number: 42,
+      status: 'created' as const,
+      fallbackReason: null,
+      platform: 'github',
+      warnings: [],
+    });
+
+    const executor = createMockExecutor();
+    const rollback = createMockRollbackManager();
+    const artifactChecker = createMockArtifactChecker();
+    const prCreator = createMockPrCreator();
+
+    const result = await runPipeline(
+      { ...baseOpts, push: true, noPr: true },
+      { executor, config: mockConfig, rollbackManager: rollback, artifactChecker, prCreator },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.pullRequestUrl).toBeNull();
+    expect(result.pullRequest).toBeUndefined();
+    expect(mockCreatePR).not.toHaveBeenCalled();
+  });
+
+  test('PR error does not trigger rollback — pipeline completes with success=true', async () => {
+    mockCreatePR.mockRejectedValue(new Error('API rate limit exceeded'));
+
+    const executor = createMockExecutor();
+    const rollback = createMockRollbackManager();
+    const artifactChecker = createMockArtifactChecker();
+    const prCreator = createMockPrCreator();
+
+    const result = await runPipeline(
+      { ...baseOpts, push: true },
+      { executor, config: mockConfig, rollbackManager: rollback, artifactChecker, prCreator },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.exitCode).toBe(0);
+    expect(result.pullRequest).toBeDefined();
+    expect(result.pullRequest!.status).toBe('fallback');
+    expect(result.pullRequest!.fallbackReason).toBe('API rate limit exceeded');
+    // Rollback should NOT have been called for PR errors
+    expect(rollback.rollback).not.toHaveBeenCalled();
+  });
+
+  test('dry-run with prCreator includes pullRequest info in plan', async () => {
+    const executor = createMockExecutor();
+    const rollback = createMockRollbackManager();
+    const artifactChecker = createMockArtifactChecker();
+    const prCreator = createMockPrCreator();
+
+    const plan = await runPipeline(
+      { ...baseOpts, push: true, dryRun: true },
+      { executor, config: mockConfig, rollbackManager: rollback, artifactChecker, prCreator },
+    );
+
+    expect(plan.dryRun).toBe(true);
+    expect(plan.pullRequest).toBeDefined();
+    expect(plan.pullRequest!.mode).toBe('auto');
+    expect(plan.pullRequest!.platform).toBe('github');
+    expect(plan.pullRequest!.hasToken).toBe(true);
   });
 });

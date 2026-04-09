@@ -19,6 +19,8 @@ export interface ReleaseCommandOpts {
   dryRun: boolean;
   json: boolean;
   verbose: boolean;
+  prMode?: string;
+  noPr?: boolean;
 }
 
 export interface ReleaseCommandDeps {
@@ -43,6 +45,8 @@ function buildPipelineOpts(opts: ReleaseCommandOpts, dryRunOverride?: boolean): 
     dryRun: dryRunOverride ?? opts.dryRun,
     json: opts.json,
     verbose: opts.verbose,
+    prMode: opts.prMode as any,
+    noPr: opts.noPr,
   };
 }
 
@@ -50,7 +54,7 @@ function buildLogEntry(
   opts: ReleaseCommandOpts,
   result: PipelineResult,
 ): OperationLogEntry {
-  return {
+  const entry: OperationLogEntry = {
     schemaVersion: 1,
     timestamp: new Date().toISOString(),
     semver: opts.semver,
@@ -61,6 +65,14 @@ function buildLogEntry(
     steps: [],
     result: 'success',
   };
+  if (result.pullRequest) {
+    entry.pullRequest = {
+      url: result.pullRequest.url,
+      number: result.pullRequest.number,
+      status: result.pullRequest.status,
+    };
+  }
+  return entry;
 }
 
 function buildFailedLogEntry(

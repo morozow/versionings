@@ -8,10 +8,25 @@ import { EXIT_CODES, VersioningsError } from './errors';
 
 const schema = require('./version.schema.json');
 
-const AVAILABLE_GIT_PLATFORMS: string[] = ['github', 'bitbucket'];
+const AVAILABLE_GIT_PLATFORMS: string[] = ['github', 'github-enterprise', 'bitbucket', 'bitbucket-server', 'gitlab', 'azure-devops'];
 
 interface GitPrConfig {
   target: string;
+  reviewers?: string[];
+  labels?: string[];
+  draft?: boolean;
+  template?: string;
+  milestone?: string;
+  linkedIssues?: string[];
+}
+
+interface GitAuthConfig {
+  token?: string;
+  method?: 'token' | 'bearer';
+}
+
+interface GitApiConfig {
+  timeout?: number;
 }
 
 interface GitLimitsConfig {
@@ -41,11 +56,16 @@ interface GitBranchTypeConfig {
 interface GitConfig {
   platform: string | undefined;
   url: string | undefined;
+  apiUrl?: string;
   branchType: GitBranchTypeConfig;
   pr: GitPrConfig;
   limits: GitLimitsConfig;
   remote: string;
   commit: GitCommitConfig;
+  auth?: GitAuthConfig;
+  api?: GitApiConfig;
+  project?: string;
+  repo?: string;
 }
 
 interface PackageSemverConfig {
@@ -217,6 +237,8 @@ export function loadAndValidateConfig(configPath: string): VersioningsConfig {
   // 4. Merge with defaultConfig and return
   const gitConfig = versionConfig.git || {};
   const prConfig = gitConfig.pr || {};
+  const authConfig = gitConfig.auth || {};
+  const apiConfig = gitConfig.api || {};
 
   const config: VersioningsConfig = {
     ...defaultConfig,
@@ -224,10 +246,21 @@ export function loadAndValidateConfig(configPath: string): VersioningsConfig {
       ...defaultConfig.git,
       url: gitConfig.url !== undefined ? gitConfig.url : defaultConfig.git.url,
       platform: gitConfig.platform !== undefined ? gitConfig.platform : defaultConfig.git.platform,
+      apiUrl: gitConfig.apiUrl !== undefined ? gitConfig.apiUrl : undefined,
       pr: {
         ...defaultConfig.git.pr,
         target: prConfig.target !== undefined ? prConfig.target : defaultConfig.git.pr.target,
+        ...(prConfig.reviewers !== undefined ? { reviewers: prConfig.reviewers } : {}),
+        ...(prConfig.labels !== undefined ? { labels: prConfig.labels } : {}),
+        ...(prConfig.draft !== undefined ? { draft: prConfig.draft } : {}),
+        ...(prConfig.template !== undefined ? { template: prConfig.template } : {}),
+        ...(prConfig.milestone !== undefined ? { milestone: prConfig.milestone } : {}),
+        ...(prConfig.linkedIssues !== undefined ? { linkedIssues: prConfig.linkedIssues } : {}),
       },
+      ...(Object.keys(authConfig).length > 0 ? { auth: authConfig } : {}),
+      ...(Object.keys(apiConfig).length > 0 ? { api: apiConfig } : {}),
+      ...(gitConfig.project !== undefined ? { project: gitConfig.project } : {}),
+      ...(gitConfig.repo !== undefined ? { repo: gitConfig.repo } : {}),
     },
   };
 

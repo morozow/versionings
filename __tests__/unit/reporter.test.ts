@@ -305,3 +305,211 @@ describe('createReporter — human-readable mode (new methods)', () => {
     expect(output).toContain('https://github.com/user/repo/compare/develop...branch');
   });
 });
+
+
+// --- PR/MR output tests (Task 8.4) ---
+
+describe('createReporter — JSON mode (PR/MR output)', () => {
+  const reporter = createReporter({ json: true });
+
+  const resultWithPR: PipelineResult = {
+    success: true,
+    version: '1.2.3',
+    previousVersion: '1.2.2',
+    semver: 'patch',
+    branch: 'version/patch/1.2.3/fix-login',
+    tag: '1.2.3--fix-login',
+    pullRequestUrl: null,
+    exitCode: 0,
+    pullRequest: {
+      url: 'https://github.com/user/repo/pull/42',
+      number: 42,
+      status: 'created',
+      fallbackReason: null,
+      platform: 'github',
+      warnings: [],
+    },
+  };
+
+  test('JSON with pullRequest object — contains all PR fields', () => {
+    const output = reporter.reportSuccess(resultWithPR);
+    const parsed = JSON.parse(output);
+    expect(parsed.pullRequest).toBeDefined();
+    expect(parsed.pullRequest.url).toBe('https://github.com/user/repo/pull/42');
+    expect(parsed.pullRequest.number).toBe(42);
+    expect(parsed.pullRequest.status).toBe('created');
+    expect(parsed.pullRequest.fallbackReason).toBeNull();
+    expect(parsed.pullRequest.platform).toBe('github');
+  });
+
+  test('JSON with pullRequestUrl alias — equals pullRequest.url', () => {
+    const output = reporter.reportSuccess(resultWithPR);
+    const parsed = JSON.parse(output);
+    expect(parsed.pullRequestUrl).toBe(parsed.pullRequest.url);
+    expect(parsed.pullRequestUrl).toBe('https://github.com/user/repo/pull/42');
+  });
+
+  test('JSON without pullRequest — pullRequestUrl preserved from legacy field', () => {
+    const output = reporter.reportSuccess(successResult);
+    const parsed = JSON.parse(output);
+    expect(parsed.pullRequest).toBeUndefined();
+    expect(parsed.pullRequestUrl).toBe('https://github.com/user/repo/compare/develop...branch');
+  });
+
+  test('JSON with fallback pullRequest — includes fallbackReason', () => {
+    const fallbackResult: PipelineResult = {
+      ...resultWithPR,
+      pullRequest: {
+        url: 'https://github.com/user/repo/compare/develop...branch',
+        number: null,
+        status: 'fallback',
+        fallbackReason: 'no_token',
+        platform: 'github',
+        warnings: [],
+      },
+    };
+    const output = reporter.reportSuccess(fallbackResult);
+    const parsed = JSON.parse(output);
+    expect(parsed.pullRequest.status).toBe('fallback');
+    expect(parsed.pullRequest.fallbackReason).toBe('no_token');
+    expect(parsed.pullRequest.number).toBeNull();
+  });
+});
+
+describe('createReporter — human-readable mode (PR/MR output)', () => {
+  const reporter = createReporter({ json: false });
+
+  test('human-readable created — "Pull request #N created: URL (Platform)"', () => {
+    const result: PipelineResult = {
+      success: true,
+      version: '1.2.3',
+      previousVersion: '1.2.2',
+      semver: 'patch',
+      branch: 'version/patch/1.2.3/fix-login',
+      tag: '1.2.3--fix-login',
+      pullRequestUrl: null,
+      exitCode: 0,
+      pullRequest: {
+        url: 'https://github.com/user/repo/pull/42',
+        number: 42,
+        status: 'created',
+        fallbackReason: null,
+        platform: 'github',
+        warnings: [],
+      },
+    };
+    const output = reporter.reportSuccess(result);
+    expect(output).toContain('Pull request #42 created');
+    expect(output).toContain('https://github.com/user/repo/pull/42');
+    expect(output).toContain('(GitHub)');
+  });
+
+  test('human-readable fallback — "Pull request URL (fallback: reason): URL"', () => {
+    const result: PipelineResult = {
+      success: true,
+      version: '1.2.3',
+      previousVersion: '1.2.2',
+      semver: 'patch',
+      branch: 'version/patch/1.2.3/fix-login',
+      tag: '1.2.3--fix-login',
+      pullRequestUrl: null,
+      exitCode: 0,
+      pullRequest: {
+        url: 'https://github.com/user/repo/compare/develop...branch',
+        number: null,
+        status: 'fallback',
+        fallbackReason: 'no_token',
+        platform: 'github',
+        warnings: [],
+      },
+    };
+    const output = reporter.reportSuccess(result);
+    expect(output).toContain('Pull request URL (fallback: no_token)');
+    expect(output).toContain('https://github.com/user/repo/compare/develop...branch');
+  });
+
+  test('human-readable draft — "(draft)" next to URL', () => {
+    const result: PipelineResult = {
+      success: true,
+      version: '1.2.3',
+      previousVersion: '1.2.2',
+      semver: 'patch',
+      branch: 'version/patch/1.2.3/fix-login',
+      tag: '1.2.3--fix-login',
+      pullRequestUrl: null,
+      exitCode: 0,
+      pullRequest: {
+        url: 'https://github.com/user/repo/pull/42',
+        number: 42,
+        status: 'created',
+        fallbackReason: null,
+        platform: 'github',
+        warnings: ['Created as draft pull request'],
+      },
+    };
+    const output = reporter.reportSuccess(result);
+    expect(output).toContain('(draft)');
+    expect(output).toContain('#42 created');
+  });
+
+  test('GitLab — "Merge request" instead of "Pull request"', () => {
+    const result: PipelineResult = {
+      success: true,
+      version: '1.2.3',
+      previousVersion: '1.2.2',
+      semver: 'patch',
+      branch: 'version/patch/1.2.3/fix-login',
+      tag: '1.2.3--fix-login',
+      pullRequestUrl: null,
+      exitCode: 0,
+      pullRequest: {
+        url: 'https://gitlab.com/user/repo/-/merge_requests/42',
+        number: 42,
+        status: 'created',
+        fallbackReason: null,
+        platform: 'gitlab',
+        warnings: [],
+      },
+    };
+    const output = reporter.reportSuccess(result);
+    expect(output).toContain('Merge request !42 created');
+    expect(output).toContain('(GitLab)');
+    expect(output).not.toContain('Pull request');
+  });
+
+  test('dry-run with PR info — shows PR/MR creation method and parameters', () => {
+    const plan: DryRunPlan = {
+      ...dryRunPlan,
+      pullRequestUrl: 'https://github.com/user/repo/compare/develop...branch',
+      pullRequest: {
+        mode: 'auto',
+        platform: 'github',
+        reviewers: ['alice', 'bob'],
+        labels: ['release'],
+        draft: true,
+        hasToken: true,
+      },
+    };
+    const output = reporter.reportDryRun(plan);
+    expect(output).toContain('PR/MR creation: API');
+    expect(output).toContain('mode: auto');
+    expect(output).toContain('platform: github');
+    expect(output).toContain('Reviewers: alice, bob');
+    expect(output).toContain('Labels: release');
+    expect(output).toContain('Draft: yes');
+  });
+
+  test('dry-run without token — shows URL method', () => {
+    const plan: DryRunPlan = {
+      ...dryRunPlan,
+      pullRequestUrl: 'https://github.com/user/repo/compare/develop...branch',
+      pullRequest: {
+        mode: 'auto',
+        platform: 'github',
+        hasToken: false,
+      },
+    };
+    const output = reporter.reportDryRun(plan);
+    expect(output).toContain('PR/MR creation: URL');
+  });
+});

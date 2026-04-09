@@ -26,7 +26,7 @@ export interface PlanCommandDeps {
  * Requirements: 8.1, 8.2, 8.3, 8.4
  */
 export async function runPlanCommand(
-  opts: { semver: string; branch: string; push: boolean; preid?: string; json: boolean },
+  opts: { semver: string; branch: string; push: boolean; preid?: string; json: boolean; prMode?: string; noPr?: boolean },
   deps: PlanCommandDeps,
 ): Promise<DryRunPlan> {
   const pipelineOpts: PipelineOpts = {
@@ -37,6 +37,8 @@ export async function runPlanCommand(
     dryRun: true,
     json: opts.json,
     verbose: false,
+    prMode: opts.prMode as any,
+    noPr: opts.noPr,
   };
 
   const result = await deps.runPipeline(pipelineOpts, deps.pipelineDeps);

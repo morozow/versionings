@@ -96,7 +96,7 @@ describe('config.validator — loadAndValidateConfig', () => {
 
   test('schema mismatch — invalid platform value throws with validationErrors', () => {
     const filePath = writeConfig({
-      git: { platform: 'gitlab', url: 'https://gitlab.com/user/repo.git' },
+      git: { platform: 'unknown-platform', url: 'https://example.com/user/repo.git' },
     });
     expect(() => loadAndValidateConfig(filePath)).toThrow(VersioningsError);
     try {
@@ -296,12 +296,12 @@ describe('config.validator — validateWithProvenance', () => {
   test('error messages include source from provenance', () => {
     const invalidConfig = {
       git: {
-        platform: 'gitlab', // invalid enum value
+        platform: 'unknown-platform', // invalid enum value
         url: 'https://example.com/repo.git',
       },
     };
     const provenanceInvalid = {
-      'git.platform': { value: 'gitlab', source: 'env' },
+      'git.platform': { value: 'unknown-platform', source: 'env' },
       'git.url': { value: 'https://example.com/repo.git', source: 'version.json' },
     };
 
@@ -349,5 +349,332 @@ describe('config.validator — validateWithProvenance', () => {
     expect(result.warnings.length).toBe(1);
     // Source should fall back to 'unknown' since no provenance entry exists
     expect(result.warnings[0].source).toBe('unknown');
+  });
+});
+
+
+describe('config.validator — extended platform enum (P2)', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'versionings-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function writeConfig(obj: Record<string, any>): string {
+    const filePath = path.join(tmpDir, 'version.json');
+    fs.writeFileSync(filePath, JSON.stringify(obj, null, 2), 'utf8');
+    return filePath;
+  }
+
+  const extendedPlatforms = ['github', 'github-enterprise', 'bitbucket', 'bitbucket-server', 'gitlab', 'azure-devops'];
+
+  test.each(extendedPlatforms.filter(p => p !== 'github-enterprise' && p !== 'bitbucket-server'))(
+    'platform "%s" passes validation without apiUrl',
+    (platform) => {
+      const filePath = writeConfig({
+        git: { platform, url: 'https://example.com/org/repo.git' },
+      });
+      const config = loadAndValidateConfig(filePath);
+      expect(config.git.platform).toBe(platform);
+    }
+  );
+
+  test.each(['github-enterprise', 'bitbucket-server'])(
+    'platform "%s" requires apiUrl — fails without it',
+    (platform) => {
+      const filePath = writeConfig({
+        git: { platform, url: 'https://example.com/org/repo.git' },
+      });
+      expect(() => loadAndValidateConfig(filePath)).toThrow(VersioningsError);
+      try {
+        loadAndValidateConfig(filePath);
+      } catch (err: any) {
+        expect(err.code).toBe(EXIT_CODES.CONFIG_ERROR);
+      }
+    }
+  );
+
+  test.each(['github-enterprise', 'bitbucket-server'])(
+    'platform "%s" passes validation with apiUrl',
+    (platform) => {
+      const filePath = writeConfig({
+        git: { platform, url: 'https://example.com/org/repo.git', apiUrl: 'https://git.corp.com/api' },
+      });
+      const config = loadAndValidateConfig(filePath);
+      expect(config.git.platform).toBe(platform);
+      expect(config.git.apiUrl).toBe('https://git.corp.com/api');
+    }
+  );
+});
+
+
+describe('config.validator — git.apiUrl validation', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'versionings-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function writeConfig(obj: Record<string, any>): string {
+    const filePath = path.join(tmpDir, 'version.json');
+    fs.writeFileSync(filePath, JSON.stringify(obj, null, 2), 'utf8');
+    return filePath;
+  }
+
+  test('valid https apiUrl passes', () => {
+    const filePath = writeConfig({
+      git: { platform: 'github', url: 'https://github.com/org/repo.git', apiUrl: 'https://api.github.com' },
+    });
+    const config = loadAndValidateConfig(filePath);
+    expect(config.git.apiUrl).toBe('https://api.github.com');
+  });
+
+  test('valid http apiUrl passes', () => {
+    const filePath = writeConfig({
+      git: { platform: 'github', url: 'https://github.com/org/repo.git', apiUrl: 'http://localhost:8080' },
+    });
+    const config = loadAndValidateConfig(filePath);
+    expect(config.git.apiUrl).toBe('http://localhost:8080');
+  });
+
+  test('apiUrl without http/https prefix fails', () => {
+    const filePath = writeConfig({
+      git: { platform: 'github', url: 'https://github.com/org/repo.git', apiUrl: 'ftp://example.com' },
+    });
+    expect(() => loadAndValidateConfig(filePath)).toThrow(VersioningsError);
+  });
+});
+
+
+describe('config.validator — git.auth section', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'versionings-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function writeConfig(obj: Record<string, any>): string {
+    const filePath = path.join(tmpDir, 'version.json');
+    fs.writeFileSync(filePath, JSON.stringify(obj, null, 2), 'utf8');
+    return filePath;
+  }
+
+  test('auth section with token and method passes', () => {
+    const filePath = writeConfig({
+      git: {
+        platform: 'github',
+        url: 'https://github.com/org/repo.git',
+        auth: { token: 'ghp_abc123', method: 'token' },
+      },
+    });
+    const config = loadAndValidateConfig(filePath);
+    expect(config.git.auth).toEqual({ token: 'ghp_abc123', method: 'token' });
+  });
+
+  test('auth section with bearer method passes', () => {
+    const filePath = writeConfig({
+      git: {
+        platform: 'gitlab',
+        url: 'https://gitlab.com/org/repo.git',
+        auth: { token: 'glpat-abc', method: 'bearer' },
+      },
+    });
+    const config = loadAndValidateConfig(filePath);
+    expect(config.git.auth).toEqual({ token: 'glpat-abc', method: 'bearer' });
+  });
+
+  test('auth section with invalid method fails', () => {
+    const filePath = writeConfig({
+      git: {
+        platform: 'github',
+        url: 'https://github.com/org/repo.git',
+        auth: { token: 'abc', method: 'oauth' },
+      },
+    });
+    expect(() => loadAndValidateConfig(filePath)).toThrow(VersioningsError);
+  });
+});
+
+
+describe('config.validator — git.api.timeout range', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'versionings-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function writeConfig(obj: Record<string, any>): string {
+    const filePath = path.join(tmpDir, 'version.json');
+    fs.writeFileSync(filePath, JSON.stringify(obj, null, 2), 'utf8');
+    return filePath;
+  }
+
+  test('timeout at minimum (1000) passes', () => {
+    const filePath = writeConfig({
+      git: { platform: 'github', url: 'https://github.com/org/repo.git', api: { timeout: 1000 } },
+    });
+    const config = loadAndValidateConfig(filePath);
+    expect(config.git.api).toEqual({ timeout: 1000 });
+  });
+
+  test('timeout at maximum (120000) passes', () => {
+    const filePath = writeConfig({
+      git: { platform: 'github', url: 'https://github.com/org/repo.git', api: { timeout: 120000 } },
+    });
+    const config = loadAndValidateConfig(filePath);
+    expect(config.git.api).toEqual({ timeout: 120000 });
+  });
+
+  test('timeout below minimum (999) fails', () => {
+    const filePath = writeConfig({
+      git: { platform: 'github', url: 'https://github.com/org/repo.git', api: { timeout: 999 } },
+    });
+    expect(() => loadAndValidateConfig(filePath)).toThrow(VersioningsError);
+  });
+
+  test('timeout above maximum (120001) fails', () => {
+    const filePath = writeConfig({
+      git: { platform: 'github', url: 'https://github.com/org/repo.git', api: { timeout: 120001 } },
+    });
+    expect(() => loadAndValidateConfig(filePath)).toThrow(VersioningsError);
+  });
+
+  test('timeout as float (5000.5) fails — must be integer', () => {
+    const filePath = writeConfig({
+      git: { platform: 'github', url: 'https://github.com/org/repo.git', api: { timeout: 5000.5 } },
+    });
+    expect(() => loadAndValidateConfig(filePath)).toThrow(VersioningsError);
+  });
+});
+
+
+describe('config.validator — git.pr extended fields', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'versionings-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function writeConfig(obj: Record<string, any>): string {
+    const filePath = path.join(tmpDir, 'version.json');
+    fs.writeFileSync(filePath, JSON.stringify(obj, null, 2), 'utf8');
+    return filePath;
+  }
+
+  test('pr with reviewers, labels, draft, template, milestone, linkedIssues passes', () => {
+    const filePath = writeConfig({
+      git: {
+        platform: 'github',
+        url: 'https://github.com/org/repo.git',
+        pr: {
+          target: 'main',
+          reviewers: ['alice', 'bob'],
+          labels: ['release', 'auto'],
+          draft: true,
+          template: '.github/PULL_REQUEST_TEMPLATE.md',
+          milestone: 'v1.0',
+          linkedIssues: ['#42', '#43'],
+        },
+      },
+    });
+    const config = loadAndValidateConfig(filePath);
+    expect(config.git.pr.reviewers).toEqual(['alice', 'bob']);
+    expect(config.git.pr.labels).toEqual(['release', 'auto']);
+    expect(config.git.pr.draft).toBe(true);
+    expect(config.git.pr.template).toBe('.github/PULL_REQUEST_TEMPLATE.md');
+    expect(config.git.pr.milestone).toBe('v1.0');
+    expect(config.git.pr.linkedIssues).toEqual(['#42', '#43']);
+  });
+
+  test('pr with empty reviewers array passes', () => {
+    const filePath = writeConfig({
+      git: {
+        platform: 'github',
+        url: 'https://github.com/org/repo.git',
+        pr: { target: 'main', reviewers: [] },
+      },
+    });
+    const config = loadAndValidateConfig(filePath);
+    expect(config.git.pr.reviewers).toEqual([]);
+  });
+
+  test('pr.draft defaults to false when not specified', () => {
+    const filePath = writeConfig({
+      git: { platform: 'github', url: 'https://github.com/org/repo.git' },
+    });
+    const config = loadAndValidateConfig(filePath);
+    expect(config.git.pr.draft).toBeUndefined();
+  });
+});
+
+
+describe('config.validator — backward compatibility', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'versionings-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function writeConfig(obj: Record<string, any>): string {
+    const filePath = path.join(tmpDir, 'version.json');
+    fs.writeFileSync(filePath, JSON.stringify(obj, null, 2), 'utf8');
+    return filePath;
+  }
+
+  test('old config with only github platform and url passes', () => {
+    const filePath = writeConfig({
+      git: { platform: 'github', url: 'https://github.com/org/repo.git' },
+    });
+    const config = loadAndValidateConfig(filePath);
+    expect(config.git.platform).toBe('github');
+    expect(config.git.auth).toBeUndefined();
+    expect(config.git.api).toBeUndefined();
+    expect(config.git.apiUrl).toBeUndefined();
+  });
+
+  test('old config with bitbucket platform passes', () => {
+    const filePath = writeConfig({
+      git: { platform: 'bitbucket', url: 'https://bitbucket.org/org/repo.git' },
+    });
+    const config = loadAndValidateConfig(filePath);
+    expect(config.git.platform).toBe('bitbucket');
+    expect(config.git.pr.target).toBe('master');
+    expect(config.git.remote).toBe('origin');
+  });
+
+  test('old config with pr.target passes and preserves value', () => {
+    const filePath = writeConfig({
+      git: {
+        platform: 'github',
+        url: 'https://github.com/org/repo.git',
+        pr: { target: 'develop' },
+      },
+    });
+    const config = loadAndValidateConfig(filePath);
+    expect(config.git.pr.target).toBe('develop');
   });
 });

@@ -16,7 +16,11 @@
           "type": "string",
           "enum": [
             "github",
-            "bitbucket"
+            "github-enterprise",
+            "bitbucket",
+            "bitbucket-server",
+            "gitlab",
+            "azure-devops"
           ]
         },
         "url": {
@@ -24,10 +28,45 @@
           "minLength": 1,
           "maxLength": 2048
         },
+        "apiUrl": {
+          "type": "string",
+          "pattern": "^https?://",
+          "maxLength": 2048
+        },
         "remote": {
           "type": "string",
           "minLength": 1,
           "maxLength": 256
+        },
+        "auth": {
+          "type": "object",
+          "properties": {
+            "token": {
+              "type": "string",
+              "minLength": 1
+            },
+            "method": {
+              "type": "string",
+              "enum": [
+                "token",
+                "bearer"
+              ],
+              "default": "token"
+            }
+          },
+          "additionalProperties": false
+        },
+        "api": {
+          "type": "object",
+          "properties": {
+            "timeout": {
+              "type": "integer",
+              "minimum": 1000,
+              "maximum": 120000,
+              "default": 30000
+            }
+          },
+          "additionalProperties": false
         },
         "branchType": {
           "type": "object",
@@ -46,8 +85,53 @@
               "type": "string",
               "minLength": 1,
               "maxLength": 256
+            },
+            "reviewers": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "labels": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "draft": {
+              "type": "boolean",
+              "default": false
+            },
+            "template": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "milestone": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "linkedIssues": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
             }
           }
+        },
+        "project": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "repo": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
         },
         "limits": {
           "type": "object",
@@ -95,6 +179,24 @@
             }
           }
         }
+      },
+      "if": {
+        "properties": {
+          "platform": {
+            "enum": [
+              "github-enterprise",
+              "bitbucket-server"
+            ]
+          }
+        },
+        "required": [
+          "platform"
+        ]
+      },
+      "then": {
+        "required": [
+          "apiUrl"
+        ]
       }
     }
   },

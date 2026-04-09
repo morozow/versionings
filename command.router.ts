@@ -152,6 +152,17 @@ export function buildCli(argv: string[]) {
           type: 'string',
           describe: 'Prerelease identifier',
         })
+        .option('pr-mode', {
+          type: 'string',
+          choices: ['auto', 'api', 'url'],
+          default: 'auto',
+          describe: 'PR creation mode: auto (API with fallback), api (API only), url (URL only)',
+        })
+        .option('no-pr', {
+          type: 'boolean',
+          default: false,
+          describe: 'Skip PR/MR creation',
+        })
         .example('$0 plan --semver=patch --branch=fix-login', 'Preview patch release')
         .example('$0 plan --semver=minor --branch=new-feature --json', 'JSON plan for CI');
     })
@@ -182,6 +193,17 @@ export function buildCli(argv: string[]) {
           type: 'boolean',
           default: false,
           describe: 'Show plan without executing',
+        })
+        .option('pr-mode', {
+          type: 'string',
+          choices: ['auto', 'api', 'url'],
+          default: 'auto',
+          describe: 'PR creation mode: auto (API with fallback), api (API only), url (URL only)',
+        })
+        .option('no-pr', {
+          type: 'boolean',
+          default: false,
+          describe: 'Skip PR/MR creation',
         })
         .example('$0 release --semver=patch --branch=fix-login', 'Patch release (interactive)')
         .example('$0 release --semver=minor --branch=feat --push --yes', 'Minor release, push, no prompt')

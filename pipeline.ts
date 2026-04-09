@@ -20,6 +20,10 @@ import type { VersioningsConfig } from './config.validator';
 import type { PipelineResult, DryRunPlan } from './reporter';
 import type { OperationLog, OperationLogEntry } from './operation.log';
 import type { RollbackStep } from './rollback';
+import type { PrCreatorDeps } from './pr.creator';
+import type { PrMode } from './scm.provider';
+import type { PR_Result } from './scm.provider';
+import { createPR } from './pr.creator';
 
 export interface PipelineOpts {
   semver: string;
@@ -29,6 +33,8 @@ export interface PipelineOpts {
   dryRun: boolean;
   json: boolean;
   verbose: boolean;
+  prMode?: PrMode;
+  noPr?: boolean;
 }
 
 export interface PipelineDeps {
@@ -37,6 +43,7 @@ export interface PipelineDeps {
   rollbackManager: RollbackManager;
   artifactChecker: ArtifactChecker;
   operationLog?: OperationLog;
+  prCreator?: PrCreatorDeps;
 }
 
 /**
@@ -57,8 +64,8 @@ export async function runPipeline(
   opts: PipelineOpts,
   deps: PipelineDeps,
 ): Promise<PipelineResult | DryRunPlan> {
-  const { executor, config, rollbackManager, artifactChecker, operationLog } = deps;
-  const { semver, branch, push, preid, dryRun } = opts;
+  const { executor, config, rollbackManager, artifactChecker, operationLog, prCreator } = deps;
+  const { semver, branch, push, preid, dryRun, prMode, noPr } = opts;
 
   // --- Stage 1: Validate input parameters ---
   if (!semver || !AVAILABLE_SEMVERS.includes(semver)) {
@@ -166,6 +173,24 @@ export async function runPipeline(
       pullRequestUrl,
       steps,
     };
+
+    // Add pullRequest info to dry-run plan when prCreator is available
+    if (push && !noPr && prCreator) {
+      const auth = prCreator.resolveAuth(
+        { config: config as Record<string, any>, env: prCreator.env },
+        config.git.platform || '',
+      );
+      const prCfg = config as any;
+      plan.pullRequest = {
+        mode: prMode || 'auto',
+        platform: config.git.platform || '',
+        reviewers: prCfg.git?.pr?.reviewers,
+        labels: prCfg.git?.pr?.labels,
+        draft: prCfg.git?.pr?.draft,
+        hasToken: !!auth.token,
+      };
+    }
+
     return plan;
   }
 
@@ -198,6 +223,7 @@ export async function runPipeline(
 
     // Stage 12: Push (optional)
     let pullRequestUrl: string | null = null;
+    let pullRequest: PR_Result | undefined = undefined;
     if (push) {
       await executor.run(`git push ${config.git.remote} ${branchName} --follow-tags`);
       const pushStep: RollbackStep = {
@@ -207,8 +233,35 @@ export async function runPipeline(
       rollbackManager.record(pushStep);
       executedSteps.push(pushStep);
 
-      // Stage 13: Generate PR URL
-      pullRequestUrl = generatePullRequestUrl(branchName, config);
+      // Stage 13: Create PR/MR
+      if (!noPr) {
+        if (prCreator) {
+          try {
+            pullRequest = await createPR(
+              config,
+              branchName,
+              commitMessage,
+              prMode || 'auto',
+              prCreator,
+            );
+            pullRequestUrl = pullRequest.url;
+          } catch (err: any) {
+            // PR error does not trigger rollback — pipeline completes with success=true
+            pullRequestUrl = generatePullRequestUrl(branchName, config);
+            pullRequest = {
+              url: pullRequestUrl,
+              number: null,
+              status: 'fallback',
+              fallbackReason: err instanceof Error ? err.message : String(err),
+              platform: config.git.platform || '',
+              warnings: [],
+            };
+          }
+        } else {
+          // Backward compatibility: no prCreator → use generatePullRequestUrl
+          pullRequestUrl = generatePullRequestUrl(branchName, config);
+        }
+      }
     }
 
     // --- Stage 14: Return result ---
@@ -222,6 +275,10 @@ export async function runPipeline(
       pullRequestUrl,
       exitCode: EXIT_CODES.SUCCESS,
     };
+
+    if (pullRequest) {
+      result.pullRequest = pullRequest;
+    }
 
     // Save operation log (best-effort)
     if (operationLog) {

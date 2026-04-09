@@ -4,6 +4,7 @@
 import { ANSI_FG_GREEN, ANSI_FG_RED, ANSI_FG_YELLOW, ANSI_FG_NC } from './utils';
 import { VersioningsError, EXIT_CODES } from './errors';
 import type { ConfigProvenance } from './config.merger';
+import type { PR_Result } from './scm.provider';
 
 export interface ReporterOpts {
   json: boolean;
@@ -18,6 +19,7 @@ export interface PipelineResult {
   tag: string;
   pullRequestUrl: string | null;
   exitCode: number;
+  pullRequest?: PR_Result;
 }
 
 export interface DryRunPlan {
@@ -30,6 +32,14 @@ export interface DryRunPlan {
   commitMessage: string;
   pullRequestUrl: string | null;
   steps: string[];
+  pullRequest?: {
+    mode: string;
+    platform: string;
+    reviewers?: string[];
+    labels?: string[];
+    draft?: boolean;
+    hasToken: boolean;
+  };
 }
 
 export interface ValidateResult {
@@ -67,21 +77,47 @@ function getCodeName(code: number): string {
   return exitCodeNames[code] || 'UNKNOWN_ERROR';
 }
 
+function platformDisplayName(platform: string): string {
+  const names: Record<string, string> = {
+    'github': 'GitHub',
+    'github-enterprise': 'GitHub Enterprise',
+    'gitlab': 'GitLab',
+    'bitbucket': 'Bitbucket',
+    'bitbucket-server': 'Bitbucket Server',
+    'azure-devops': 'Azure DevOps',
+  };
+  return names[platform] || platform;
+}
+
+function isDraftPr(pr: PR_Result): boolean {
+  // Draft status is indicated by warnings containing 'draft' from the provider
+  return pr.warnings?.some(w => w.toLowerCase().includes('draft')) ?? false;
+}
+
 export function createReporter(opts: ReporterOpts): Reporter {
   const jsonMode = opts.json;
 
   function reportSuccess(result: PipelineResult): string {
     if (jsonMode) {
-      const obj = {
+      const obj: Record<string, any> = {
         success: result.success,
         version: result.version,
         previousVersion: result.previousVersion,
         semver: result.semver,
         branch: result.branch,
         tag: result.tag,
-        pullRequestUrl: result.pullRequestUrl,
+        pullRequestUrl: result.pullRequest ? result.pullRequest.url : result.pullRequestUrl,
         exitCode: result.exitCode,
       };
+      if (result.pullRequest) {
+        obj.pullRequest = {
+          url: result.pullRequest.url,
+          number: result.pullRequest.number,
+          status: result.pullRequest.status,
+          fallbackReason: result.pullRequest.fallbackReason,
+          platform: result.pullRequest.platform,
+        };
+      }
       return JSON.stringify(obj) + '\n';
     }
 
@@ -90,7 +126,21 @@ export function createReporter(opts: ReporterOpts): Reporter {
     lines.push(`Version: ${result.version}`);
     lines.push(`Branch: ${result.branch}`);
     lines.push(`Semantic version: ${result.semver}`);
-    if (result.pullRequestUrl !== null) {
+
+    if (result.pullRequest) {
+      const pr = result.pullRequest;
+      const isGitLab = pr.platform === 'gitlab';
+      const prTerm = isGitLab ? 'Merge request' : 'Pull request';
+      const numberPrefix = isGitLab ? '!' : '#';
+
+      if (pr.status === 'created') {
+        const draftSuffix = isDraftPr(pr) ? ' (draft)' : '';
+        lines.push(`${prTerm} ${numberPrefix}${pr.number} created${draftSuffix}: ${pr.url} (${platformDisplayName(pr.platform)})`);
+      } else if (pr.status === 'fallback') {
+        const reason = pr.fallbackReason || 'unknown';
+        lines.push(`${prTerm} URL (fallback: ${reason}): ${pr.url}`);
+      }
+    } else if (result.pullRequestUrl !== null) {
       lines.push(`Pull request URL: ${result.pullRequestUrl}`);
     }
     return lines.join('\n');
@@ -141,6 +191,20 @@ export function createReporter(opts: ReporterOpts): Reporter {
     lines.push(`Commit message: ${plan.commitMessage}`);
     if (plan.pullRequestUrl !== null) {
       lines.push(`Pull request URL: ${plan.pullRequestUrl}`);
+    }
+    if (plan.pullRequest) {
+      const pr = plan.pullRequest;
+      const method = pr.hasToken ? 'API' : 'URL';
+      lines.push(`PR/MR creation: ${method} (mode: ${pr.mode}, platform: ${pr.platform})`);
+      if (pr.reviewers && pr.reviewers.length > 0) {
+        lines.push(`  Reviewers: ${pr.reviewers.join(', ')}`);
+      }
+      if (pr.labels && pr.labels.length > 0) {
+        lines.push(`  Labels: ${pr.labels.join(', ')}`);
+      }
+      if (pr.draft) {
+        lines.push(`  Draft: yes`);
+      }
     }
     lines.push('');
     lines.push('Steps:');
@@ -218,6 +282,11 @@ export function createReporter(opts: ReporterOpts): Reporter {
     lines.push(`Commit message: ${plan.commitMessage}`);
     if (plan.pullRequestUrl !== null) {
       lines.push(`Pull request URL: ${plan.pullRequestUrl}`);
+    }
+    if (plan.pullRequest) {
+      const pr = plan.pullRequest;
+      const method = pr.hasToken ? 'API' : 'URL';
+      lines.push(`PR/MR creation: ${method} (mode: ${pr.mode}, platform: ${pr.platform})`);
     }
     lines.push('');
     lines.push('Steps:');

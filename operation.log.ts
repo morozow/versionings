@@ -17,6 +17,7 @@ export interface OperationLogEntry {
   steps: RollbackStep[];
   result: 'success' | 'failed';
   error?: { code: number; message: string };
+  pullRequest?: { url: string; number: number | null; status: string };
 }
 
 export interface OperationLog {

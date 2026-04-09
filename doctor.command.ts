@@ -9,6 +9,8 @@ import { Executor } from './executor';
 import { Reporter, DoctorCheck } from './reporter';
 import { ConfigProvenance } from './config.merger';
 import { VersioningsError, EXIT_CODES } from './errors';
+import { resolveAuth } from './auth.resolver';
+import { createHttpClient } from './http.client';
 
 // ---------------------------------------------------------------------------
 // Public interfaces
@@ -24,6 +26,8 @@ export interface DoctorCommandDeps {
   existsSync?: (p: string) => boolean;
   /** DI: override for process.version (testability) */
   nodeVersion?: string;
+  /** DI: override for HTTP client (testability) */
+  httpClient?: { get(url: string, headers?: Record<string, string>): Promise<{ status: number }> };
 }
 
 export interface DoctorResult {
@@ -176,6 +180,63 @@ function checkPackageJson(
 }
 
 // ---------------------------------------------------------------------------
+// SCM API availability check
+// ---------------------------------------------------------------------------
+
+const DEFAULT_API_URLS: Record<string, string> = {
+  'github': 'https://api.github.com',
+  'github-enterprise': '',
+  'gitlab': 'https://gitlab.com',
+  'bitbucket': 'https://api.bitbucket.org',
+  'bitbucket-server': '',
+  'azure-devops': 'https://dev.azure.com',
+};
+
+async function checkScmApi(
+  config: Record<string, any>,
+  env: Record<string, string | undefined>,
+  httpClient?: { get(url: string, headers?: Record<string, string>): Promise<{ status: number }> },
+): Promise<DoctorCheck | null> {
+  const platform: string = config?.git?.platform || '';
+  if (!platform) return null;
+
+  const auth = resolveAuth({ config, env }, platform);
+  if (!auth.token) return null;
+
+  const apiUrl = config?.git?.apiUrl || DEFAULT_API_URLS[platform] || '';
+  if (!apiUrl) {
+    return {
+      name: 'scm_api',
+      status: 'warn',
+      found: `no API URL for platform "${platform}"`,
+      expected: 'git.apiUrl configured for self-hosted platforms',
+    };
+  }
+
+  const client = httpClient ?? createHttpClient();
+
+  try {
+    const authHeader = auth.method === 'bearer'
+      ? `Bearer ${auth.token}`
+      : `token ${auth.token}`;
+    const response = await client.get(apiUrl, { Authorization: authHeader });
+    return {
+      name: 'scm_api',
+      status: 'pass',
+      found: `${apiUrl} (HTTP ${response.status})`,
+    };
+  } catch (err: any) {
+    const message = err instanceof VersioningsError ? err.message : String(err.message || err);
+    return {
+      name: 'scm_api',
+      status: 'fail',
+      found: `${apiUrl} — ${message}`,
+      expected: 'SCM API endpoint accessible',
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main entry point
 // ---------------------------------------------------------------------------
 
@@ -207,6 +268,19 @@ export async function runDoctorCommand(
 
   // 5. package.json presence
   checks.push(checkPackageJson(deps.cwd, exists));
+
+  // 6. SCM API availability (only when auth token is available)
+  try {
+    const loadResult = deps.configLoader({ cwd: deps.cwd, env: deps.env });
+    const scmCheck = await checkScmApi(
+      loadResult.config as Record<string, any>,
+      deps.env,
+      deps.httpClient,
+    );
+    if (scmCheck) checks.push(scmCheck);
+  } catch (_) {
+    // Config load failed — skip SCM API check (config check already reported the error)
+  }
 
   // Output via reporter
   const output = deps.reporter.reportDoctor(checks);
