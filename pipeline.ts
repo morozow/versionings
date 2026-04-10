@@ -23,6 +23,9 @@ import type { RollbackStep } from './rollback';
 import type { PrCreatorDeps } from './pr.creator';
 import type { PrMode } from './scm.provider';
 import type { PR_Result } from './scm.provider';
+import type { Strategy_Registry } from './strategy.registry';
+import type { PolicyCheckResult, PolicyCheckerDeps } from './policy.checker';
+import type { Branching_Strategy, BranchResult } from './branching.strategy';
 import { createPR } from './pr.creator';
 
 export interface PipelineOpts {
@@ -44,6 +47,8 @@ export interface PipelineDeps {
   artifactChecker: ArtifactChecker;
   operationLog?: OperationLog;
   prCreator?: PrCreatorDeps;
+  strategyRegistry?: Strategy_Registry;
+  policyChecker?: (targetBranch: string, deps: PolicyCheckerDeps) => Promise<PolicyCheckResult>;
 }
 
 /**
@@ -64,7 +69,7 @@ export async function runPipeline(
   opts: PipelineOpts,
   deps: PipelineDeps,
 ): Promise<PipelineResult | DryRunPlan> {
-  const { executor, config, rollbackManager, artifactChecker, operationLog, prCreator } = deps;
+  const { executor, config, rollbackManager, artifactChecker, operationLog, prCreator, strategyRegistry, policyChecker } = deps;
   const { semver, branch, push, preid, dryRun, prMode, noPr } = opts;
 
   // --- Stage 1: Validate input parameters ---
@@ -135,44 +140,105 @@ export async function runPipeline(
     : 'git checkout -- package.json';
   await executor.run(checkoutFiles);
 
-  // --- Stage 5: Compute branch name and tag name ---
-  const branchName = composeVersionBranchName(semver, nextVersion, branch, config);
-  const tagName = composeVersionTagName(semver, nextVersion, branch);
-  const commitMessage = semverMessage(semver, nextVersion, config);
+  // --- Stage 3.5: Get strategy and generate names ---
+  let branchResult: BranchResult;
+  let tagName: string;
+  let commitMessage: string;
+  let currentBranch = '';
+  let strategyName: string | undefined;
+  let policyResult: PolicyCheckResult | undefined;
+
+  if (strategyRegistry) {
+    // Strategy-based name generation
+    const currentBranchResult = await executor.run('git rev-parse --abbrev-ref HEAD');
+    currentBranch = currentBranchResult.stdout.trim();
+
+    strategyName = (config as any).git?.branching?.strategy || 'default';
+    const strategy: Branching_Strategy = strategyRegistry.getStrategy(strategyName!, config);
+
+    const strategyParams = { semver, version: nextVersion, comment: branch, config, currentBranch };
+
+    const validation = strategy.validateContext(strategyParams);
+    if (!validation.valid) {
+      throw new VersioningsError(EXIT_CODES.INVALID_ARGS, validation.errors.join('; '));
+    }
+
+    branchResult = strategy.composeBranchName(strategyParams);
+    tagName = strategy.composeTagName(strategyParams);
+    commitMessage = strategy.composeCommitMessage(strategyParams);
+  } else {
+    // Backward compatibility: use legacy functions
+    branchResult = { branchName: composeVersionBranchName(semver, nextVersion, branch, config), reuseBranch: false };
+    tagName = composeVersionTagName(semver, nextVersion, branch);
+    commitMessage = semverMessage(semver, nextVersion, config);
+  }
+
+  const branchName = branchResult.branchName;
+
+  // --- Stage 3.7: Policy Check ---
+  if (policyChecker) {
+    const targetBranch = branchResult.branchName || currentBranch;
+    policyResult = await policyChecker(targetBranch, { executor, config } as any);
+    if (policyResult.errors.length > 0) {
+      throw new VersioningsError(EXIT_CODES.POLICY_VIOLATION, policyResult.errors.join('; '));
+    }
+    // Warnings: output to stderr
+    if (policyResult.warnings.length > 0) {
+      for (const warning of policyResult.warnings) {
+        process.stderr.write(`Warning: ${warning}\n`);
+      }
+    }
+  }
 
   // --- Stage 6: Check artifact uniqueness ---
   await artifactChecker.checkUniqueness({
     tagName,
-    branchName,
+    branchName: branchResult.branchName,
     push: !!push,
     remote: config.git.remote,
+    skipBranchCheck: branchResult.reuseBranch,
   });
 
   // --- Stage 7: Dry-run — return plan without mutations ---
   if (dryRun) {
     const steps: string[] = [
       npmCmd,
-      `git checkout -b ${branchName}`,
-      `git tag --annotate ${tagName} --message "${commitMessage}"`,
-      `git commit --all --message "${commitMessage}"`,
     ];
+    if (branchResult.branchName === null) {
+      // trunk-based: no branch creation
+    } else if (branchResult.reuseBranch) {
+      steps.push(`git checkout ${branchResult.branchName}`);
+    } else {
+      steps.push(`git checkout -b ${branchResult.branchName}`);
+    }
+    steps.push(`git tag --annotate ${tagName} --message "${commitMessage}"`);
+    steps.push(`git commit --all --message "${commitMessage}"`);
     if (push) {
-      steps.push(`git push ${config.git.remote} ${branchName} --follow-tags`);
+      const pushBranch = branchResult.branchName || currentBranch;
+      steps.push(`git push ${config.git.remote} ${pushBranch} --follow-tags`);
     }
 
-    const pullRequestUrl = push ? generatePullRequestUrl(branchName, config) : null;
+    const pullRequestUrl = push ? generatePullRequestUrl(branchResult.branchName || currentBranch, config) : null;
 
     const plan: DryRunPlan = {
       dryRun: true,
       currentVersion,
       nextVersion,
       semver,
-      branch: branchName,
+      branch: branchResult.branchName || currentBranch,
       tag: tagName,
       commitMessage,
       pullRequestUrl,
       steps,
     };
+
+    // Add strategy and policyCheck to dry-run plan if available
+    if (strategyName) {
+      (plan as any).strategy = strategyName;
+    }
+    if (policyResult) {
+      (plan as any).policyCheck = policyResult;
+    }
 
     // Add pullRequest info to dry-run plan when prCreator is available
     if (push && !noPr && prCreator) {
@@ -203,11 +269,20 @@ export async function runPipeline(
     rollbackManager.record(npmStep);
     executedSteps.push(npmStep);
 
-    // Stage 9: Create branch
-    await executor.run(`git checkout -b ${branchName}`);
-    const branchStep: RollbackStep = { type: STEP_TYPES.BRANCH_CREATED, meta: { name: branchName } };
-    rollbackManager.record(branchStep);
-    executedSteps.push(branchStep);
+    // Stage 9: Create branch (strategy-aware)
+    if (branchResult.branchName !== null) {
+      if (branchResult.reuseBranch) {
+        await executor.run(`git checkout ${branchResult.branchName}`);
+        const branchStep: RollbackStep = { type: STEP_TYPES.BRANCH_SWITCHED, meta: { previousBranch: currentBranch } };
+        rollbackManager.record(branchStep);
+        executedSteps.push(branchStep);
+      } else {
+        await executor.run(`git checkout -b ${branchResult.branchName}`);
+        const branchStep: RollbackStep = { type: STEP_TYPES.BRANCH_CREATED, meta: { name: branchResult.branchName } };
+        rollbackManager.record(branchStep);
+        executedSteps.push(branchStep);
+      }
+    }
 
     // Stage 10: Create annotated tag
     await executor.run(`git tag --annotate ${tagName} --message "${commitMessage}"`);
@@ -225,21 +300,23 @@ export async function runPipeline(
     let pullRequestUrl: string | null = null;
     let pullRequest: PR_Result | undefined = undefined;
     if (push) {
-      await executor.run(`git push ${config.git.remote} ${branchName} --follow-tags`);
+      const pushBranch = branchResult.branchName || currentBranch;
+      await executor.run(`git push ${config.git.remote} ${pushBranch} --follow-tags`);
       const pushStep: RollbackStep = {
         type: STEP_TYPES.PUSHED,
-        meta: { branch: branchName, tag: tagName, remote: config.git.remote },
+        meta: { branch: pushBranch, tag: tagName, remote: config.git.remote },
       };
       rollbackManager.record(pushStep);
       executedSteps.push(pushStep);
 
       // Stage 13: Create PR/MR
       if (!noPr) {
+        const prBranch = branchResult.branchName || currentBranch;
         if (prCreator) {
           try {
             pullRequest = await createPR(
               config,
-              branchName,
+              prBranch,
               commitMessage,
               prMode || 'auto',
               prCreator,
@@ -247,7 +324,7 @@ export async function runPipeline(
             pullRequestUrl = pullRequest.url;
           } catch (err: any) {
             // PR error does not trigger rollback — pipeline completes with success=true
-            pullRequestUrl = generatePullRequestUrl(branchName, config);
+            pullRequestUrl = generatePullRequestUrl(prBranch, config);
             pullRequest = {
               url: pullRequestUrl,
               number: null,
@@ -259,7 +336,7 @@ export async function runPipeline(
           }
         } else {
           // Backward compatibility: no prCreator → use generatePullRequestUrl
-          pullRequestUrl = generatePullRequestUrl(branchName, config);
+          pullRequestUrl = generatePullRequestUrl(prBranch, config);
         }
       }
     }
@@ -270,11 +347,15 @@ export async function runPipeline(
       version: nextVersion,
       previousVersion: currentVersion,
       semver,
-      branch: branchName,
+      branch: branchResult.branchName || currentBranch,
       tag: tagName,
       pullRequestUrl,
       exitCode: EXIT_CODES.SUCCESS,
     };
+
+    if (strategyName) {
+      (result as any).strategy = strategyName;
+    }
 
     if (pullRequest) {
       result.pullRequest = pullRequest;
@@ -289,7 +370,7 @@ export async function runPipeline(
           semver,
           version: nextVersion,
           previousVersion: currentVersion,
-          branch: branchName,
+          branch: branchResult.branchName || currentBranch,
           tag: tagName,
           steps: executedSteps,
           result: 'success',
@@ -314,7 +395,7 @@ export async function runPipeline(
           semver,
           version: nextVersion,
           previousVersion: currentVersion,
-          branch: branchName,
+          branch: branchResult.branchName || currentBranch,
           tag: tagName,
           steps: executedSteps,
           result: 'failed',

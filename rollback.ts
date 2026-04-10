@@ -9,6 +9,7 @@ export interface StepTypes {
   readonly TAG_CREATED: 'tag_created';
   readonly COMMITTED: 'committed';
   readonly PUSHED: 'pushed';
+  readonly BRANCH_SWITCHED: 'branch_switched';
 }
 
 export const STEP_TYPES: StepTypes = Object.freeze({
@@ -17,6 +18,7 @@ export const STEP_TYPES: StepTypes = Object.freeze({
   TAG_CREATED: 'tag_created' as const,
   COMMITTED: 'committed' as const,
   PUSHED: 'pushed' as const,
+  BRANCH_SWITCHED: 'branch_switched' as const,
 });
 
 export interface RollbackStep {
@@ -81,6 +83,10 @@ export function createRollbackManager(executor: Executor): RollbackManager {
 
       case STEP_TYPES.COMMITTED:
         await executor.run('git reset --hard HEAD~1');
+        break;
+
+      case STEP_TYPES.BRANCH_SWITCHED:
+        await executor.run(`git checkout ${meta.previousBranch}`);
         break;
 
       case STEP_TYPES.PUSHED: {

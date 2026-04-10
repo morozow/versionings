@@ -24,6 +24,9 @@ const KNOWN_MAPPINGS: Array<{ envVar: string; configPath: string }> = [
   { envVar: 'VERSIONINGS_GIT_PR_TARGET', configPath: 'git.pr.target' },
   { envVar: 'VERSIONINGS_GIT_REMOTE', configPath: 'git.remote' },
   { envVar: 'VERSIONINGS_GIT_BRANCH_TYPE_VERSION', configPath: 'git.branchType.version' },
+  { envVar: 'VERSIONINGS_GIT_BRANCHING_STRATEGY', configPath: 'git.branching.strategy' },
+  { envVar: 'VERSIONINGS_GIT_BRANCHING_MAIN_BRANCH', configPath: 'git.branching.mainBranch' },
+  { envVar: 'VERSIONINGS_GIT_BRANCHING_DEVELOP_BRANCH', configPath: 'git.branching.developBranch' },
 ];
 
 /**
@@ -137,9 +140,13 @@ describe('Property 4: Env var mapping', () => {
     fc.assert(
       fc.property(arbMapping, arbNonEmptyString, (mapping, value) => {
         // For env vars that map to platform, constrain value to valid enum
-        const effectiveValue = mapping.configPath === 'git.platform'
-          ? (Math.random() > 0.5 ? 'github' : 'bitbucket')
-          : value;
+        let effectiveValue = value;
+        if (mapping.configPath === 'git.platform') {
+          effectiveValue = Math.random() > 0.5 ? 'github' : 'bitbucket';
+        } else if (mapping.configPath === 'git.branching.strategy') {
+          const strategies = ['default', 'trunk-based', 'git-flow', 'release-branch', 'hotfix', 'maintenance'];
+          effectiveValue = strategies[Math.floor(Math.random() * strategies.length)];
+        }
 
         // Build env with the required fields + the test env var
         const env: Record<string, string> = {
@@ -177,9 +184,13 @@ describe('Property 4: Env var mapping', () => {
   test('env var source appears in provenance for mapped fields', () => {
     fc.assert(
       fc.property(arbMapping, arbNonEmptyString, (mapping, value) => {
-        const effectiveValue = mapping.configPath === 'git.platform'
-          ? (Math.random() > 0.5 ? 'github' : 'bitbucket')
-          : value;
+        let effectiveValue = value;
+        if (mapping.configPath === 'git.platform') {
+          effectiveValue = Math.random() > 0.5 ? 'github' : 'bitbucket';
+        } else if (mapping.configPath === 'git.branching.strategy') {
+          const strategies = ['default', 'trunk-based', 'git-flow', 'release-branch', 'hotfix', 'maintenance'];
+          effectiveValue = strategies[Math.floor(Math.random() * strategies.length)];
+        }
 
         const env: Record<string, string> = {
           VERSIONINGS_GIT_PLATFORM: 'github',

@@ -35,6 +35,16 @@ export interface PR_Result {
   warnings: string[];
 }
 
+/** Branch protection rule returned by SCM API. */
+export interface Branch_Protection_Rule {
+  protected: boolean;
+  allowForcePush: boolean;
+  requirePullRequest: boolean;
+  requiredReviewers: number;
+  requiredStatusChecks: string[];
+  requireSignedCommits: boolean;
+}
+
 /** Unified interface for SCM platform providers. */
 export interface SCM_Provider {
   /** Returns the provider name (e.g. 'github', 'gitlab'). */
@@ -43,6 +53,8 @@ export interface SCM_Provider {
   createPullRequest(opts: PR_Options): Promise<PR_Result>;
   /** Generates a URL for manual PR/MR creation (fallback). */
   generatePullRequestUrl(branch: string, target: string): string;
+  /** Queries branch protection rules. Returns null if no protection. */
+  getBranchProtection?(branch: string): Promise<Branch_Protection_Rule | null>;
 }
 
 /** Configuration for an SCM provider instance. */

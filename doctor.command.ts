@@ -180,6 +180,55 @@ function checkPackageJson(
 }
 
 // ---------------------------------------------------------------------------
+// Branching strategy check
+// ---------------------------------------------------------------------------
+
+async function checkBranchingStrategy(
+  executor: Executor,
+  config: Record<string, any>,
+): Promise<DoctorCheck | null> {
+  const branching = config?.git?.branching;
+  const strategy = branching?.strategy || 'default';
+
+  if (strategy === 'default') return null; // No branch constraints for default strategy
+
+  let currentBranch: string;
+  try {
+    const result = await executor.run('git rev-parse --abbrev-ref HEAD');
+    currentBranch = result.stdout.trim();
+  } catch {
+    return {
+      name: 'branching_strategy',
+      status: 'warn',
+      found: 'cannot determine current branch',
+      expected: `branch matching "${strategy}" strategy`,
+    };
+  }
+
+  const mainBranch = branching?.mainBranch || 'master';
+  const developBranch = branching?.developBranch || 'develop';
+
+  // Check if current branch is appropriate for the strategy
+  switch (strategy) {
+    case 'trunk-based':
+    case 'hotfix':
+      if (currentBranch === mainBranch || currentBranch === 'main') {
+        return { name: 'branching_strategy', status: 'pass', found: `${currentBranch} (strategy: ${strategy})` };
+      }
+      return { name: 'branching_strategy', status: 'warn', found: `${currentBranch} (strategy: ${strategy})`, expected: `${mainBranch} or main` };
+
+    case 'git-flow':
+      if (currentBranch === developBranch || currentBranch === mainBranch || currentBranch === 'main') {
+        return { name: 'branching_strategy', status: 'pass', found: `${currentBranch} (strategy: ${strategy})` };
+      }
+      return { name: 'branching_strategy', status: 'warn', found: `${currentBranch} (strategy: ${strategy})`, expected: `${developBranch} or ${mainBranch}` };
+
+    default:
+      return { name: 'branching_strategy', status: 'pass', found: `${currentBranch} (strategy: ${strategy})` };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // SCM API availability check
 // ---------------------------------------------------------------------------
 
@@ -269,17 +318,24 @@ export async function runDoctorCommand(
   // 5. package.json presence
   checks.push(checkPackageJson(deps.cwd, exists));
 
-  // 6. SCM API availability (only when auth token is available)
+  // 6. SCM API availability + 7. Branching strategy check
   try {
     const loadResult = deps.configLoader({ cwd: deps.cwd, env: deps.env });
+    const configObj = loadResult.config as Record<string, any>;
+
+    // 6. SCM API availability (only when auth token is available)
     const scmCheck = await checkScmApi(
-      loadResult.config as Record<string, any>,
+      configObj,
       deps.env,
       deps.httpClient,
     );
     if (scmCheck) checks.push(scmCheck);
+
+    // 7. Branching strategy check
+    const bsCheck = await checkBranchingStrategy(deps.executor, configObj);
+    if (bsCheck) checks.push(bsCheck);
   } catch (_) {
-    // Config load failed — skip SCM API check (config check already reported the error)
+    // Config load failed — skip SCM API and branching checks (config check already reported the error)
   }
 
   // Output via reporter

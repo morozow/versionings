@@ -16,11 +16,12 @@ describe('EXIT_CODES', () => {
       INCOMPLETE_ROLLBACK: 7,
       NO_OPERATION: 8,
       USER_CANCELLED: 9,
+      POLICY_VIOLATION: 10,
     });
   });
 
-  test('has exactly 10 entries', () => {
-    expect(Object.keys(EXIT_CODES)).toHaveLength(10);
+  test('has exactly 11 entries', () => {
+    expect(Object.keys(EXIT_CODES)).toHaveLength(11);
   });
 
   test('existing codes 0–7 are unchanged', () => {

@@ -27,6 +27,8 @@ import { createGitHubProvider } from './github.provider';
 import { createGitLabProvider } from './gitlab.provider';
 import { createBitbucketCloudProvider, createBitbucketServerProvider } from './bitbucket.provider';
 import { createAzureDevOpsProvider } from './azure.provider';
+import { createStrategyRegistry } from './strategy.registry';
+import { checkPolicy } from './policy.checker';
 import type { PrCreatorDeps } from './pr.creator';
 import type { PipelineResult, DryRunPlan } from './reporter';
 
@@ -178,6 +180,8 @@ async function handlePlan(args: any): Promise<void> {
         rollbackManager,
         artifactChecker,
         prCreator: buildPrCreatorDeps(),
+        strategyRegistry: createStrategyRegistry(),
+        policyChecker: checkPolicy,
       },
       reporter,
       stdout: process.stdout,
@@ -239,6 +243,8 @@ async function handleRelease(args: any): Promise<void> {
         rollbackManager,
         artifactChecker,
         prCreator: buildPrCreatorDeps(),
+        strategyRegistry: createStrategyRegistry(),
+        policyChecker: checkPolicy,
       },
       interactionManager,
       operationLog,

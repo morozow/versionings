@@ -53,6 +53,14 @@ interface GitBranchTypeConfig {
   version: string;
 }
 
+export interface BranchingConfig {
+  strategy: string;
+  branchTemplate?: string;
+  tagTemplate?: string;
+  mainBranch: string;
+  developBranch: string;
+}
+
 interface GitConfig {
   platform: string | undefined;
   url: string | undefined;
@@ -66,6 +74,7 @@ interface GitConfig {
   api?: GitApiConfig;
   project?: string;
   repo?: string;
+  branching?: BranchingConfig;
 }
 
 interface PackageSemverConfig {
@@ -118,6 +127,11 @@ const defaultConfig: VersioningsConfig = {
     },
     limits: {
       branchMaxCommentLength: 96,
+    },
+    branching: {
+      strategy: 'default',
+      mainBranch: 'master',
+      developBranch: 'develop',
     },
     remote: 'origin',
     commit: {
@@ -239,6 +253,7 @@ export function loadAndValidateConfig(configPath: string): VersioningsConfig {
   const prConfig = gitConfig.pr || {};
   const authConfig = gitConfig.auth || {};
   const apiConfig = gitConfig.api || {};
+  const branchingConfig = gitConfig.branching || {};
 
   const config: VersioningsConfig = {
     ...defaultConfig,
@@ -256,6 +271,13 @@ export function loadAndValidateConfig(configPath: string): VersioningsConfig {
         ...(prConfig.template !== undefined ? { template: prConfig.template } : {}),
         ...(prConfig.milestone !== undefined ? { milestone: prConfig.milestone } : {}),
         ...(prConfig.linkedIssues !== undefined ? { linkedIssues: prConfig.linkedIssues } : {}),
+      },
+      branching: {
+        strategy: branchingConfig.strategy !== undefined ? branchingConfig.strategy : defaultConfig.git.branching!.strategy,
+        mainBranch: branchingConfig.mainBranch !== undefined ? branchingConfig.mainBranch : defaultConfig.git.branching!.mainBranch,
+        developBranch: branchingConfig.developBranch !== undefined ? branchingConfig.developBranch : defaultConfig.git.branching!.developBranch,
+        ...(branchingConfig.branchTemplate !== undefined ? { branchTemplate: branchingConfig.branchTemplate } : {}),
+        ...(branchingConfig.tagTemplate !== undefined ? { tagTemplate: branchingConfig.tagTemplate } : {}),
       },
       ...(Object.keys(authConfig).length > 0 ? { auth: authConfig } : {}),
       ...(Object.keys(apiConfig).length > 0 ? { api: apiConfig } : {}),

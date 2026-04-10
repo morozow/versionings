@@ -106,3 +106,40 @@ describe('rollback manager', () => {
     ]);
   });
 });
+
+describe('BRANCH_SWITCHED rollback', () => {
+  test('rollback BRANCH_SWITCHED executes git checkout {previousBranch}', async () => {
+    const executor = createMockExecutor();
+    const mgr = createRollbackManager(executor);
+    mgr.record({ type: STEP_TYPES.BRANCH_SWITCHED, meta: { previousBranch: 'main' } });
+    await mgr.rollback();
+    expect(executor.commands).toEqual(['git checkout main']);
+  });
+
+  test('LIFO order with BRANCH_SWITCHED', async () => {
+    const executor = createMockExecutor();
+    const mgr = createRollbackManager(executor);
+    mgr.record({ type: STEP_TYPES.NPM_VERSION_BUMP, meta: {} });
+    mgr.record({ type: STEP_TYPES.BRANCH_SWITCHED, meta: { previousBranch: 'develop' } });
+    mgr.record({ type: STEP_TYPES.TAG_CREATED, meta: { name: 'v1.0.1' } });
+    await mgr.rollback();
+    expect(executor.commands).toEqual([
+      'git tag -d v1.0.1',
+      'git checkout develop',
+      'git reset --hard',
+    ]);
+  });
+
+  test('no BRANCH_SWITCHED → does not attempt to rollback branch switch', async () => {
+    const executor = createMockExecutor();
+    const mgr = createRollbackManager(executor);
+    mgr.record({ type: STEP_TYPES.NPM_VERSION_BUMP, meta: {} });
+    mgr.record({ type: STEP_TYPES.TAG_CREATED, meta: { name: 'v2.0.0' } });
+    await mgr.rollback();
+    expect(executor.commands).toEqual([
+      'git tag -d v2.0.0',
+      'git reset --hard',
+    ]);
+    expect(executor.commands.every(cmd => !cmd.includes('git checkout'))).toBe(true);
+  });
+});

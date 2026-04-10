@@ -531,3 +531,312 @@ describe('runPipeline — PR_Creator integration', () => {
     expect(plan.pullRequest!.hasToken).toBe(true);
   });
 });
+
+
+// --- Strategy Registry and Policy Checker integration tests (Task 9.6) ---
+
+describe('runPipeline — Strategy Registry and Policy Checker integration', () => {
+  function createMockStrategy(overrides: Partial<{
+    name: string;
+    branchName: string | null;
+    reuseBranch: boolean;
+    tagName: string;
+    commitMessage: string;
+    valid: boolean;
+    validationErrors: string[];
+  }> = {}) {
+    const opts = {
+      name: 'default',
+      branchName: 'version/patch/1.2.3/fix-login' as string | null,
+      reuseBranch: false,
+      tagName: 'v1.2.3',
+      commitMessage: 'Release v1.2.3',
+      valid: true,
+      validationErrors: [] as string[],
+      ...overrides,
+    };
+    return {
+      name: jest.fn(() => opts.name),
+      composeBranchName: jest.fn(() => ({ branchName: opts.branchName, reuseBranch: opts.reuseBranch })),
+      composeTagName: jest.fn(() => opts.tagName),
+      composeCommitMessage: jest.fn(() => opts.commitMessage),
+      validateContext: jest.fn(() => ({ valid: opts.valid, errors: opts.validationErrors })),
+    };
+  }
+
+  function createMockStrategyRegistry(strategy?: ReturnType<typeof createMockStrategy>) {
+    const mockStrategy = strategy || createMockStrategy();
+    return {
+      register: jest.fn(),
+      getStrategy: jest.fn(() => mockStrategy),
+      availableStrategies: jest.fn(() => ['default', 'trunk-based', 'git-flow', 'release-branch', 'hotfix', 'maintenance']),
+      _mockStrategy: mockStrategy,
+    };
+  }
+
+  function createMockExecutorWithCurrentBranch(currentBranch = 'main') {
+    return {
+      run: jest.fn(async (cmd: string) => {
+        if (cmd.includes('git status --porcelain')) return { stdout: '', lines: [] };
+        if (cmd.includes('git remote --verbose')) return { stdout: 'origin\thttps://github.com/user/repo.git (fetch)', lines: ['origin\thttps://github.com/user/repo.git (fetch)'] };
+        if (cmd.includes('npm --no-git-tag-version version')) return { stdout: 'v1.2.3', lines: ['v1.2.3'] };
+        if (cmd.includes('git checkout -- package')) return { stdout: '', lines: [] };
+        if (cmd.includes('git rev-parse --abbrev-ref HEAD')) return { stdout: currentBranch, lines: [currentBranch] };
+        if (cmd.includes('git tag --list')) return { stdout: '', lines: [] };
+        if (cmd.includes('git branch --list')) return { stdout: '  main', lines: ['main'] };
+        return { stdout: '', lines: [] };
+      }),
+    };
+  }
+
+  test('pipeline with strategyRegistry (default strategy) — uses strategy for branch/tag names', async () => {
+    const strategy = createMockStrategy({
+      name: 'default',
+      branchName: 'version/patch/1.2.3/fix-login',
+      tagName: 'v1.2.3',
+      commitMessage: 'Release v1.2.3',
+    });
+    const registry = createMockStrategyRegistry(strategy);
+    const executor = createMockExecutorWithCurrentBranch('main');
+    const rollback = createMockRollbackManager();
+    const artifactChecker = createMockArtifactChecker();
+
+    const result = await runPipeline(baseOpts, {
+      executor,
+      config: mockConfig,
+      rollbackManager: rollback,
+      artifactChecker,
+      strategyRegistry: registry,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.version).toBe('1.2.3');
+    expect(result.branch).toBe('version/patch/1.2.3/fix-login');
+    expect(result.tag).toBe('v1.2.3');
+    expect(registry.getStrategy).toHaveBeenCalled();
+    expect(strategy.composeBranchName).toHaveBeenCalled();
+    expect(strategy.composeTagName).toHaveBeenCalled();
+    expect(strategy.composeCommitMessage).toHaveBeenCalled();
+    expect(strategy.validateContext).toHaveBeenCalled();
+  });
+
+  test('pipeline with trunk-based (null branch, skip checkout -b) — no git checkout -b called', async () => {
+    const strategy = createMockStrategy({
+      name: 'trunk-based',
+      branchName: null,
+      reuseBranch: false,
+      tagName: 'v1.2.3',
+      commitMessage: 'Release v1.2.3',
+    });
+    const registry = createMockStrategyRegistry(strategy);
+    const executor = createMockExecutorWithCurrentBranch('main');
+    const rollback = createMockRollbackManager();
+    const artifactChecker = createMockArtifactChecker();
+
+    const result = await runPipeline(baseOpts, {
+      executor,
+      config: mockConfig,
+      rollbackManager: rollback,
+      artifactChecker,
+      strategyRegistry: registry,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.branch).toBe('main');
+    // No git checkout -b should have been called
+    const checkoutCmds = (executor.run as jest.Mock).mock.calls
+      .map((c: any[]) => c[0])
+      .filter((cmd: string) => cmd.includes('git checkout -b'));
+    expect(checkoutCmds).toHaveLength(0);
+    // Rollback should not record BRANCH_CREATED
+    const recordCalls = (rollback.record as jest.Mock).mock.calls
+      .map((c: any[]) => c[0])
+      .filter((step: any) => step.type === 'branch_created');
+    expect(recordCalls).toHaveLength(0);
+  });
+
+  test('pipeline with reuseBranch (git checkout without -b, BRANCH_SWITCHED) — git checkout called without -b', async () => {
+    const strategy = createMockStrategy({
+      name: 'release-branch',
+      branchName: 'release/1.2.3',
+      reuseBranch: true,
+      tagName: 'v1.2.3',
+      commitMessage: 'Release v1.2.3',
+    });
+    const registry = createMockStrategyRegistry(strategy);
+    const executor = createMockExecutorWithCurrentBranch('develop');
+    const rollback = createMockRollbackManager();
+    const artifactChecker = createMockArtifactChecker();
+
+    const result = await runPipeline(baseOpts, {
+      executor,
+      config: mockConfig,
+      rollbackManager: rollback,
+      artifactChecker,
+      strategyRegistry: registry,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.branch).toBe('release/1.2.3');
+    // Should call git checkout (without -b) for reuse
+    const checkoutCmds = (executor.run as jest.Mock).mock.calls
+      .map((c: any[]) => c[0])
+      .filter((cmd: string) => cmd.match(/git checkout (?!-b)(?!--)/) && cmd.includes('release/1.2.3'));
+    expect(checkoutCmds.length).toBeGreaterThan(0);
+    // Should NOT call git checkout -b
+    const checkoutNewCmds = (executor.run as jest.Mock).mock.calls
+      .map((c: any[]) => c[0])
+      .filter((cmd: string) => cmd.includes('git checkout -b'));
+    expect(checkoutNewCmds).toHaveLength(0);
+    // Rollback should record BRANCH_SWITCHED, not BRANCH_CREATED
+    const switchedSteps = (rollback.record as jest.Mock).mock.calls
+      .map((c: any[]) => c[0])
+      .filter((step: any) => step.type === 'branch_switched');
+    expect(switchedSteps.length).toBe(1);
+    expect(switchedSteps[0].meta.previousBranch).toBe('develop');
+  });
+
+  test('pipeline with policyChecker (warnings → stderr) — warnings written to stderr, pipeline continues', async () => {
+    const executor = createMockExecutorWithCurrentBranch('main');
+    const rollback = createMockRollbackManager();
+    const artifactChecker = createMockArtifactChecker();
+    const strategy = createMockStrategy();
+    const registry = createMockStrategyRegistry(strategy);
+
+    const mockPolicyChecker = jest.fn(async () => ({
+      warnings: ['Branch "main" has pushRemote configured'],
+      errors: [],
+      protectionInfo: null,
+    }));
+
+    const stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    try {
+      const result = await runPipeline(baseOpts, {
+        executor,
+        config: mockConfig,
+        rollbackManager: rollback,
+        artifactChecker,
+        strategyRegistry: registry,
+        policyChecker: mockPolicyChecker,
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockPolicyChecker).toHaveBeenCalledTimes(1);
+      // Warnings should be written to stderr
+      const stderrCalls = stderrSpy.mock.calls.map((c: any[]) => c[0]);
+      const warningOutput = stderrCalls.some((msg: string) => msg.includes('pushRemote'));
+      expect(warningOutput).toBe(true);
+    } finally {
+      stderrSpy.mockRestore();
+    }
+  });
+
+  test('pipeline with policyChecker (errors → POLICY_VIOLATION) — throws VersioningsError with POLICY_VIOLATION code', async () => {
+    const executor = createMockExecutorWithCurrentBranch('main');
+    const rollback = createMockRollbackManager();
+    const artifactChecker = createMockArtifactChecker();
+    const strategy = createMockStrategy();
+    const registry = createMockStrategyRegistry(strategy);
+
+    const mockPolicyChecker = jest.fn(async () => ({
+      warnings: [],
+      errors: ['Direct push to protected branch is not allowed'],
+      protectionInfo: { protected: true, source: 'scm-api' as const },
+    }));
+
+    try {
+      await runPipeline(baseOpts, {
+        executor,
+        config: mockConfig,
+        rollbackManager: rollback,
+        artifactChecker,
+        strategyRegistry: registry,
+        policyChecker: mockPolicyChecker,
+      });
+      throw new Error('Expected to throw');
+    } catch (err: any) {
+      expect(err).toBeInstanceOf(VersioningsError);
+      expect(err.code).toBe(EXIT_CODES.POLICY_VIOLATION);
+      expect(err.message).toContain('Direct push to protected branch is not allowed');
+    }
+
+    // No mutation commands should have been executed after policy check
+    const mutationCmds = (executor.run as jest.Mock).mock.calls
+      .map((c: any[]) => c[0])
+      .filter((cmd: string) =>
+        cmd.includes('git checkout -b') ||
+        cmd.includes('git tag --annotate') ||
+        cmd.includes('git commit') ||
+        cmd.includes('git push')
+      );
+    expect(mutationCmds).toHaveLength(0);
+  });
+
+  test('dry-run with strategy and policyCheck — plan contains strategy and policyCheck fields', async () => {
+    const strategy = createMockStrategy({
+      name: 'git-flow',
+      branchName: 'release/1.2.3',
+      tagName: 'v1.2.3',
+      commitMessage: 'Release v1.2.3',
+    });
+    const registry = createMockStrategyRegistry(strategy);
+    const executor = createMockExecutorWithCurrentBranch('develop');
+    const rollback = createMockRollbackManager();
+    const artifactChecker = createMockArtifactChecker();
+
+    const mockPolicyChecker = jest.fn(async () => ({
+      warnings: ['Signed commits required'],
+      errors: [],
+      protectionInfo: { protected: true, source: 'git-config' as const, gpgSignConfigured: true },
+    }));
+
+    const configWithStrategy = {
+      ...mockConfig,
+      git: {
+        ...mockConfig.git,
+        branching: { strategy: 'git-flow' },
+      },
+    };
+
+    const plan = await runPipeline(
+      { ...baseOpts, dryRun: true },
+      {
+        executor,
+        config: configWithStrategy,
+        rollbackManager: rollback,
+        artifactChecker,
+        strategyRegistry: registry,
+        policyChecker: mockPolicyChecker,
+      },
+    );
+
+    expect(plan.dryRun).toBe(true);
+    expect((plan as any).strategy).toBe('git-flow');
+    expect((plan as any).policyCheck).toBeDefined();
+    expect((plan as any).policyCheck.warnings).toContain('Signed commits required');
+    expect((plan as any).policyCheck.protectionInfo).toBeDefined();
+    expect((plan as any).policyCheck.protectionInfo.protected).toBe(true);
+  });
+
+  test('backward compatibility (without strategyRegistry → legacy) — existing behavior preserved', async () => {
+    const executor = createMockExecutor();
+    const rollback = createMockRollbackManager();
+    const artifactChecker = createMockArtifactChecker();
+
+    // No strategyRegistry, no policyChecker — should use legacy functions
+    const result = await runPipeline(baseOpts, {
+      executor,
+      config: mockConfig,
+      rollbackManager: rollback,
+      artifactChecker,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.version).toBe('1.2.3');
+    expect(result.branch).toBe('version/patch/1.2.3/fix-login');
+    expect(result.tag).toBe('1.2.3--fix-login');
+    // strategy field should not be set when no strategyRegistry
+    expect((result as any).strategy).toBeUndefined();
+  });
+});

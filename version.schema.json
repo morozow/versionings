@@ -178,6 +178,46 @@
               }
             }
           }
+        },
+        "branching": {
+          "type": "object",
+          "properties": {
+            "strategy": {
+              "type": "string",
+              "enum": [
+                "default",
+                "trunk-based",
+                "git-flow",
+                "release-branch",
+                "hotfix",
+                "maintenance"
+              ],
+              "default": "default"
+            },
+            "branchTemplate": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "tagTemplate": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "mainBranch": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "default": "master"
+            },
+            "developBranch": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "default": "develop"
+            }
+          },
+          "additionalProperties": false
         }
       },
       "if": {

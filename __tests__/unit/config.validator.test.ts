@@ -678,3 +678,174 @@ describe('config.validator — backward compatibility', () => {
     expect(config.git.pr.target).toBe('develop');
   });
 });
+
+
+describe('config.validator — git.branching section', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'versionings-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function writeConfig(obj: Record<string, any>): string {
+    const filePath = path.join(tmpDir, 'version.json');
+    fs.writeFileSync(filePath, JSON.stringify(obj, null, 2), 'utf8');
+    return filePath;
+  }
+
+  test('config without git.branching passes validation (backward compatibility)', () => {
+    const filePath = writeConfig({
+      git: { platform: 'github', url: 'https://github.com/org/repo.git' },
+    });
+    const config = loadAndValidateConfig(filePath);
+    expect(config.git.platform).toBe('github');
+    // branching defaults should be applied
+    expect(config.git.branching).toBeDefined();
+    expect(config.git.branching!.strategy).toBe('default');
+    expect(config.git.branching!.mainBranch).toBe('master');
+    expect(config.git.branching!.developBranch).toBe('develop');
+  });
+
+  test('git.branching.strategy enum — valid values pass', () => {
+    const strategies = ['default', 'trunk-based', 'git-flow', 'release-branch', 'hotfix', 'maintenance'];
+    for (const strategy of strategies) {
+      const filePath = writeConfig({
+        git: {
+          platform: 'github',
+          url: 'https://github.com/org/repo.git',
+          branching: { strategy },
+        },
+      });
+      const config = loadAndValidateConfig(filePath);
+      expect(config.git.branching!.strategy).toBe(strategy);
+    }
+  });
+
+  test('git.branching.strategy — invalid value fails validation', () => {
+    const filePath = writeConfig({
+      git: {
+        platform: 'github',
+        url: 'https://github.com/org/repo.git',
+        branching: { strategy: 'invalid-strategy' },
+      },
+    });
+    expect(() => loadAndValidateConfig(filePath)).toThrow(VersioningsError);
+    try {
+      loadAndValidateConfig(filePath);
+    } catch (err: any) {
+      expect(err.code).toBe(EXIT_CODES.CONFIG_ERROR);
+      expect(Array.isArray(err.details.validationErrors)).toBe(true);
+    }
+  });
+
+  test('git.branching.branchTemplate — non-empty string passes', () => {
+    const filePath = writeConfig({
+      git: {
+        platform: 'github',
+        url: 'https://github.com/org/repo.git',
+        branching: { strategy: 'default', branchTemplate: '{branchType}/{semver}/{version}' },
+      },
+    });
+    const config = loadAndValidateConfig(filePath);
+    expect(config.git.branching!.branchTemplate).toBe('{branchType}/{semver}/{version}');
+  });
+
+  test('git.branching.branchTemplate — empty string fails validation', () => {
+    const filePath = writeConfig({
+      git: {
+        platform: 'github',
+        url: 'https://github.com/org/repo.git',
+        branching: { strategy: 'default', branchTemplate: '' },
+      },
+    });
+    expect(() => loadAndValidateConfig(filePath)).toThrow(VersioningsError);
+  });
+
+  test('git.branching.tagTemplate — non-empty string passes', () => {
+    const filePath = writeConfig({
+      git: {
+        platform: 'github',
+        url: 'https://github.com/org/repo.git',
+        branching: { strategy: 'default', tagTemplate: 'v{version}' },
+      },
+    });
+    const config = loadAndValidateConfig(filePath);
+    expect(config.git.branching!.tagTemplate).toBe('v{version}');
+  });
+
+  test('git.branching.tagTemplate — empty string fails validation', () => {
+    const filePath = writeConfig({
+      git: {
+        platform: 'github',
+        url: 'https://github.com/org/repo.git',
+        branching: { strategy: 'default', tagTemplate: '' },
+      },
+    });
+    expect(() => loadAndValidateConfig(filePath)).toThrow(VersioningsError);
+  });
+
+  test('git.branching.mainBranch and developBranch — custom values pass', () => {
+    const filePath = writeConfig({
+      git: {
+        platform: 'github',
+        url: 'https://github.com/org/repo.git',
+        branching: { strategy: 'git-flow', mainBranch: 'main', developBranch: 'dev' },
+      },
+    });
+    const config = loadAndValidateConfig(filePath);
+    expect(config.git.branching!.mainBranch).toBe('main');
+    expect(config.git.branching!.developBranch).toBe('dev');
+  });
+
+  test('git.branching.mainBranch and developBranch — defaults applied when not specified', () => {
+    const filePath = writeConfig({
+      git: {
+        platform: 'github',
+        url: 'https://github.com/org/repo.git',
+        branching: { strategy: 'trunk-based' },
+      },
+    });
+    const config = loadAndValidateConfig(filePath);
+    expect(config.git.branching!.mainBranch).toBe('master');
+    expect(config.git.branching!.developBranch).toBe('develop');
+  });
+
+  test('git.branching — additionalProperties rejected', () => {
+    const filePath = writeConfig({
+      git: {
+        platform: 'github',
+        url: 'https://github.com/org/repo.git',
+        branching: { strategy: 'default', unknownField: 'value' },
+      },
+    });
+    expect(() => loadAndValidateConfig(filePath)).toThrow(VersioningsError);
+  });
+
+  test('git.branching with all fields passes', () => {
+    const filePath = writeConfig({
+      git: {
+        platform: 'github',
+        url: 'https://github.com/org/repo.git',
+        branching: {
+          strategy: 'git-flow',
+          branchTemplate: 'release/{version}',
+          tagTemplate: 'v{version}',
+          mainBranch: 'main',
+          developBranch: 'dev',
+        },
+      },
+    });
+    const config = loadAndValidateConfig(filePath);
+    expect(config.git.branching).toEqual({
+      strategy: 'git-flow',
+      branchTemplate: 'release/{version}',
+      tagTemplate: 'v{version}',
+      mainBranch: 'main',
+      developBranch: 'dev',
+    });
+  });
+});

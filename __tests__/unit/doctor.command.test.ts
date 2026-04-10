@@ -285,3 +285,265 @@ describe('doctor.command — provenance in diagnostics', () => {
     expect(reporter.reportProvenance).not.toHaveBeenCalled();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Branching strategy check tests
+// ---------------------------------------------------------------------------
+
+describe('doctor.command — branching strategy check', () => {
+  test('skips branching check when strategy is default', async () => {
+    const deps = makeDeps();
+
+    const checks = await runDoctorCommand({ json: false }, deps);
+
+    const bsCheck = checks.find((c) => c.name === 'branching_strategy');
+    expect(bsCheck).toBeUndefined();
+  });
+
+  test('skips branching check when git.branching is absent', async () => {
+    const configLoader = createMockConfigLoader(
+      makeConfigLoadResult({
+        config: { git: { platform: 'github', url: 'https://github.com/org/repo' } } as any,
+      }),
+    );
+    const deps = makeDeps({ configLoader });
+
+    const checks = await runDoctorCommand({ json: false }, deps);
+
+    const bsCheck = checks.find((c) => c.name === 'branching_strategy');
+    expect(bsCheck).toBeUndefined();
+  });
+
+  test('returns pass for trunk-based when on main branch', async () => {
+    const executor = createMockExecutor({
+      'git rev-parse --abbrev-ref HEAD': 'main',
+    });
+    const configLoader = createMockConfigLoader(
+      makeConfigLoadResult({
+        config: {
+          git: {
+            platform: 'github',
+            url: 'https://github.com/org/repo',
+            branching: { strategy: 'trunk-based', mainBranch: 'master' },
+          },
+        } as any,
+      }),
+    );
+    const deps = makeDeps({ executor, configLoader });
+
+    const checks = await runDoctorCommand({ json: false }, deps);
+
+    const bsCheck = checks.find((c) => c.name === 'branching_strategy')!;
+    expect(bsCheck.status).toBe('pass');
+    expect(bsCheck.found).toContain('main');
+    expect(bsCheck.found).toContain('trunk-based');
+  });
+
+  test('returns pass for trunk-based when on configured mainBranch', async () => {
+    const executor = createMockExecutor({
+      'git rev-parse --abbrev-ref HEAD': 'master',
+    });
+    const configLoader = createMockConfigLoader(
+      makeConfigLoadResult({
+        config: {
+          git: {
+            platform: 'github',
+            url: 'https://github.com/org/repo',
+            branching: { strategy: 'trunk-based', mainBranch: 'master' },
+          },
+        } as any,
+      }),
+    );
+    const deps = makeDeps({ executor, configLoader });
+
+    const checks = await runDoctorCommand({ json: false }, deps);
+
+    const bsCheck = checks.find((c) => c.name === 'branching_strategy')!;
+    expect(bsCheck.status).toBe('pass');
+  });
+
+  test('returns warn for trunk-based when on feature branch', async () => {
+    const executor = createMockExecutor({
+      'git rev-parse --abbrev-ref HEAD': 'feature/my-feature',
+    });
+    const configLoader = createMockConfigLoader(
+      makeConfigLoadResult({
+        config: {
+          git: {
+            platform: 'github',
+            url: 'https://github.com/org/repo',
+            branching: { strategy: 'trunk-based', mainBranch: 'master' },
+          },
+        } as any,
+      }),
+    );
+    const deps = makeDeps({ executor, configLoader });
+
+    const checks = await runDoctorCommand({ json: false }, deps);
+
+    const bsCheck = checks.find((c) => c.name === 'branching_strategy')!;
+    expect(bsCheck.status).toBe('warn');
+    expect(bsCheck.expected).toContain('master');
+    expect(bsCheck.expected).toContain('main');
+  });
+
+  test('returns pass for git-flow when on develop branch', async () => {
+    const executor = createMockExecutor({
+      'git rev-parse --abbrev-ref HEAD': 'develop',
+    });
+    const configLoader = createMockConfigLoader(
+      makeConfigLoadResult({
+        config: {
+          git: {
+            platform: 'github',
+            url: 'https://github.com/org/repo',
+            branching: { strategy: 'git-flow', mainBranch: 'master', developBranch: 'develop' },
+          },
+        } as any,
+      }),
+    );
+    const deps = makeDeps({ executor, configLoader });
+
+    const checks = await runDoctorCommand({ json: false }, deps);
+
+    const bsCheck = checks.find((c) => c.name === 'branching_strategy')!;
+    expect(bsCheck.status).toBe('pass');
+    expect(bsCheck.found).toContain('develop');
+    expect(bsCheck.found).toContain('git-flow');
+  });
+
+  test('returns warn for git-flow when on feature branch', async () => {
+    const executor = createMockExecutor({
+      'git rev-parse --abbrev-ref HEAD': 'feature/login',
+    });
+    const configLoader = createMockConfigLoader(
+      makeConfigLoadResult({
+        config: {
+          git: {
+            platform: 'github',
+            url: 'https://github.com/org/repo',
+            branching: { strategy: 'git-flow', mainBranch: 'master', developBranch: 'develop' },
+          },
+        } as any,
+      }),
+    );
+    const deps = makeDeps({ executor, configLoader });
+
+    const checks = await runDoctorCommand({ json: false }, deps);
+
+    const bsCheck = checks.find((c) => c.name === 'branching_strategy')!;
+    expect(bsCheck.status).toBe('warn');
+    expect(bsCheck.expected).toContain('develop');
+    expect(bsCheck.expected).toContain('master');
+  });
+
+  test('returns pass for hotfix when on main branch', async () => {
+    const executor = createMockExecutor({
+      'git rev-parse --abbrev-ref HEAD': 'main',
+    });
+    const configLoader = createMockConfigLoader(
+      makeConfigLoadResult({
+        config: {
+          git: {
+            platform: 'github',
+            url: 'https://github.com/org/repo',
+            branching: { strategy: 'hotfix', mainBranch: 'master' },
+          },
+        } as any,
+      }),
+    );
+    const deps = makeDeps({ executor, configLoader });
+
+    const checks = await runDoctorCommand({ json: false }, deps);
+
+    const bsCheck = checks.find((c) => c.name === 'branching_strategy')!;
+    expect(bsCheck.status).toBe('pass');
+  });
+
+  test('returns pass for release-branch strategy (any branch)', async () => {
+    const executor = createMockExecutor({
+      'git rev-parse --abbrev-ref HEAD': 'release/1.2.0',
+    });
+    const configLoader = createMockConfigLoader(
+      makeConfigLoadResult({
+        config: {
+          git: {
+            platform: 'github',
+            url: 'https://github.com/org/repo',
+            branching: { strategy: 'release-branch' },
+          },
+        } as any,
+      }),
+    );
+    const deps = makeDeps({ executor, configLoader });
+
+    const checks = await runDoctorCommand({ json: false }, deps);
+
+    const bsCheck = checks.find((c) => c.name === 'branching_strategy')!;
+    expect(bsCheck.status).toBe('pass');
+    expect(bsCheck.found).toContain('release-branch');
+  });
+
+  test('returns pass for maintenance strategy (any branch)', async () => {
+    const executor = createMockExecutor({
+      'git rev-parse --abbrev-ref HEAD': 'support/1.0',
+    });
+    const configLoader = createMockConfigLoader(
+      makeConfigLoadResult({
+        config: {
+          git: {
+            platform: 'github',
+            url: 'https://github.com/org/repo',
+            branching: { strategy: 'maintenance' },
+          },
+        } as any,
+      }),
+    );
+    const deps = makeDeps({ executor, configLoader });
+
+    const checks = await runDoctorCommand({ json: false }, deps);
+
+    const bsCheck = checks.find((c) => c.name === 'branching_strategy')!;
+    expect(bsCheck.status).toBe('pass');
+    expect(bsCheck.found).toContain('maintenance');
+  });
+
+  test('returns warn when git rev-parse fails', async () => {
+    const executor = createMockExecutor({
+      'git rev-parse --abbrev-ref HEAD': new VersioningsError(
+        EXIT_CODES.COMMAND_FAILED, 'not a git repo', {},
+      ) as any,
+    });
+    const configLoader = createMockConfigLoader(
+      makeConfigLoadResult({
+        config: {
+          git: {
+            platform: 'github',
+            url: 'https://github.com/org/repo',
+            branching: { strategy: 'trunk-based' },
+          },
+        } as any,
+      }),
+    );
+    const deps = makeDeps({ executor, configLoader });
+
+    const checks = await runDoctorCommand({ json: false }, deps);
+
+    const bsCheck = checks.find((c) => c.name === 'branching_strategy')!;
+    expect(bsCheck.status).toBe('warn');
+    expect(bsCheck.found).toContain('cannot determine current branch');
+  });
+
+  test('skips branching check when config load fails', async () => {
+    const configLoader = createMockConfigLoader(
+      undefined,
+      new VersioningsError(EXIT_CODES.CONFIG_ERROR, 'bad config', {}),
+    );
+    const deps = makeDeps({ configLoader });
+
+    const checks = await runDoctorCommand({ json: false }, deps);
+
+    const bsCheck = checks.find((c) => c.name === 'branching_strategy');
+    expect(bsCheck).toBeUndefined();
+  });
+});

@@ -6,9 +6,10 @@ import { Executor } from './executor';
 
 export interface CheckUniquenessOpts {
   tagName: string;
-  branchName: string;
+  branchName: string | null;
   push: boolean;
   remote?: string;
+  skipBranchCheck?: boolean;
 }
 
 export interface ArtifactChecker {
@@ -21,8 +22,9 @@ export interface ArtifactChecker {
  */
 export function createArtifactChecker(executor: Executor): ArtifactChecker {
   return {
-    async checkUniqueness({ tagName, branchName, push, remote }: CheckUniquenessOpts): Promise<void> {
+    async checkUniqueness({ tagName, branchName, push, remote, skipBranchCheck }: CheckUniquenessOpts): Promise<void> {
       const remoteName = remote || 'origin';
+      const shouldCheckBranch = branchName !== null && skipBranchCheck !== true;
 
       // 1. Check local tags — exact match
       const tagResult = await executor.run('git tag --list');
@@ -37,19 +39,21 @@ export function createArtifactChecker(executor: Executor): ArtifactChecker {
       }
 
       // 2. Check local branches — strip leading "* " and whitespace, exact match
-      const branchResult = await executor.run('git branch --list');
-      const localBranches = branchResult.stdout
-        .split(/\r?\n/)
-        .map(function (line: string) { return line.replace(/^\*?\s*/, ''); })
-        .filter(Boolean);
+      if (shouldCheckBranch) {
+        const branchResult = await executor.run('git branch --list');
+        const localBranches = branchResult.stdout
+          .split(/\r?\n/)
+          .map(function (line: string) { return line.replace(/^\*?\s*/, ''); })
+          .filter(Boolean);
 
-      for (const name of localBranches) {
-        if (name === branchName) {
-          throw new VersioningsError(
-            EXIT_CODES.ARTIFACT_CONFLICT,
-            `Branch already exists: ${branchName}`,
-            { type: 'branch', name: branchName, scope: 'local' }
-          );
+        for (const name of localBranches) {
+          if (name === branchName) {
+            throw new VersioningsError(
+              EXIT_CODES.ARTIFACT_CONFLICT,
+              `Branch already exists: ${branchName}`,
+              { type: 'branch', name: branchName, scope: 'local' }
+            );
+          }
         }
       }
 
@@ -75,19 +79,21 @@ export function createArtifactChecker(executor: Executor): ArtifactChecker {
         }
 
         // 4. Remote branches
-        const remoteHeadResult = await executor.run(
-          'git ls-remote --heads ' + remoteName
-        );
-        const remoteHeadLines = remoteHeadResult.stdout.split(/\r?\n/).filter(Boolean);
-        for (const line of remoteHeadLines) {
-          const match = line.match(/\trefs\/heads\/(.+)$/);
-          if (!match) continue;
-          if (match[1] === branchName) {
-            throw new VersioningsError(
-              EXIT_CODES.ARTIFACT_CONFLICT,
-              `Branch already exists on remote: ${branchName}`,
-              { type: 'branch', name: branchName, scope: 'remote' }
-            );
+        if (shouldCheckBranch) {
+          const remoteHeadResult = await executor.run(
+            'git ls-remote --heads ' + remoteName
+          );
+          const remoteHeadLines = remoteHeadResult.stdout.split(/\r?\n/).filter(Boolean);
+          for (const line of remoteHeadLines) {
+            const match = line.match(/\trefs\/heads\/(.+)$/);
+            if (!match) continue;
+            if (match[1] === branchName) {
+              throw new VersioningsError(
+                EXIT_CODES.ARTIFACT_CONFLICT,
+                `Branch already exists on remote: ${branchName}`,
+                { type: 'branch', name: branchName, scope: 'remote' }
+              );
+            }
           }
         }
       }

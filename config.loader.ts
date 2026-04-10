@@ -57,6 +57,9 @@ const ENV_VAR_MAP: Record<string, string> = {
   VERSIONINGS_GIT_API_URL: 'git.apiUrl',
   VERSIONINGS_GIT_AUTH_TOKEN: 'git.auth.token',
   VERSIONINGS_GIT_API_TIMEOUT: 'git.api.timeout',
+  VERSIONINGS_GIT_BRANCHING_STRATEGY: 'git.branching.strategy',
+  VERSIONINGS_GIT_BRANCHING_MAIN_BRANCH: 'git.branching.mainBranch',
+  VERSIONINGS_GIT_BRANCHING_DEVELOP_BRANCH: 'git.branching.developBranch',
 };
 
 // ---------------------------------------------------------------------------

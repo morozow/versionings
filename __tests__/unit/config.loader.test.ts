@@ -264,6 +264,42 @@ describe('config.loader — loadConfig', () => {
       expect(result.config.git.branchType.version).toBe('release');
     });
 
+    test('VERSIONINGS_GIT_BRANCHING_STRATEGY → git.branching.strategy', () => {
+      const fs = createMockFs({
+        [path.join(CWD, 'version.json')]: JSON.stringify(VALID_GIT),
+      });
+      const result = loadConfig({
+        cwd: CWD,
+        env: { VERSIONINGS_GIT_BRANCHING_STRATEGY: 'trunk-based' },
+        ...fs,
+      });
+      expect(result.config.git.branching.strategy).toBe('trunk-based');
+    });
+
+    test('VERSIONINGS_GIT_BRANCHING_MAIN_BRANCH → git.branching.mainBranch', () => {
+      const fs = createMockFs({
+        [path.join(CWD, 'version.json')]: JSON.stringify(VALID_GIT),
+      });
+      const result = loadConfig({
+        cwd: CWD,
+        env: { VERSIONINGS_GIT_BRANCHING_MAIN_BRANCH: 'main' },
+        ...fs,
+      });
+      expect(result.config.git.branching.mainBranch).toBe('main');
+    });
+
+    test('VERSIONINGS_GIT_BRANCHING_DEVELOP_BRANCH → git.branching.developBranch', () => {
+      const fs = createMockFs({
+        [path.join(CWD, 'version.json')]: JSON.stringify(VALID_GIT),
+      });
+      const result = loadConfig({
+        cwd: CWD,
+        env: { VERSIONINGS_GIT_BRANCHING_DEVELOP_BRANCH: 'dev' },
+        ...fs,
+      });
+      expect(result.config.git.branching.developBranch).toBe('dev');
+    });
+
     test('empty env var values are ignored', () => {
       const fs = createMockFs({
         [path.join(CWD, 'version.json')]: JSON.stringify(VALID_GIT),

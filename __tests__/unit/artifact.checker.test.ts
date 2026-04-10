@@ -202,4 +202,87 @@ describe('createArtifactChecker', () => {
       expect(calls[1]).toContain('git branch --list');
     });
   });
+
+  describe('branchName null and skipBranchCheck', () => {
+    test('branchName=null → skips branch check (checks only tag)', async () => {
+      const executor = createMockExecutor({
+        'git tag --list': '',
+        'git branch --list': '  main',
+      });
+      const checker = createArtifactChecker(executor);
+      await checker.checkUniqueness({
+        tagName: '1.0.0--fix',
+        branchName: null,
+        push: false,
+      });
+      const calls = (executor.run as jest.Mock).mock.calls.map((c: any[]) => c[0]);
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toContain('git tag --list');
+      expect(calls).not.toEqual(
+        expect.arrayContaining([expect.stringContaining('git branch --list')])
+      );
+    });
+
+    test('skipBranchCheck=true → skips branch check (checks only tag)', async () => {
+      const executor = createMockExecutor({
+        'git tag --list': '',
+        'git branch --list': '  main',
+      });
+      const checker = createArtifactChecker(executor);
+      await checker.checkUniqueness({
+        tagName: '1.0.0--fix',
+        branchName: 'release/1.0.0',
+        push: false,
+        skipBranchCheck: true,
+      });
+      const calls = (executor.run as jest.Mock).mock.calls.map((c: any[]) => c[0]);
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toContain('git tag --list');
+      expect(calls).not.toEqual(
+        expect.arrayContaining([expect.stringContaining('git branch --list')])
+      );
+    });
+
+    test('backward compatibility — branchName=string, skipBranchCheck=false → checks both', async () => {
+      const executor = createMockExecutor({
+        'git tag --list': '',
+        'git branch --list': '  main',
+      });
+      const checker = createArtifactChecker(executor);
+      await checker.checkUniqueness({
+        tagName: '1.0.0--fix',
+        branchName: 'release/1.0.0',
+        push: false,
+        skipBranchCheck: false,
+      });
+      const calls = (executor.run as jest.Mock).mock.calls.map((c: any[]) => c[0]);
+      expect(calls).toHaveLength(2);
+      expect(calls[0]).toContain('git tag --list');
+      expect(calls[1]).toContain('git branch --list');
+    });
+
+    test('branchName=null with existing tag → still throws ARTIFACT_CONFLICT for tag', async () => {
+      const executor = createMockExecutor({
+        'git tag --list': '0.9.0--old\n1.0.0--fix\n2.0.0--next',
+        'git branch --list': '  main',
+      });
+      const checker = createArtifactChecker(executor);
+      try {
+        await checker.checkUniqueness({
+          tagName: '1.0.0--fix',
+          branchName: null,
+          push: false,
+        });
+        throw new Error('Expected to throw');
+      } catch (err: any) {
+        expect(err).toBeInstanceOf(VersioningsError);
+        expect(err.code).toBe(EXIT_CODES.ARTIFACT_CONFLICT);
+        expect(err.details).toEqual({
+          type: 'tag',
+          name: '1.0.0--fix',
+          scope: 'local',
+        });
+      }
+    });
+  });
 });

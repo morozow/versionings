@@ -156,6 +156,40 @@ async function checkGitRemote(
   }
 }
 
+function checkBranchingStrategy(
+  config: any,
+): ValidateResult['checks'][0] {
+  const branching = config?.git?.branching;
+  if (!branching || !branching.strategy || branching.strategy === 'default') {
+    return {
+      name: 'branching_strategy',
+      status: 'pass',
+      details: 'Branching strategy: default (backward compatible)',
+    };
+  }
+
+  const validStrategies = ['default', 'trunk-based', 'git-flow', 'release-branch', 'hotfix', 'maintenance'];
+  if (!validStrategies.includes(branching.strategy)) {
+    return {
+      name: 'branching_strategy',
+      status: 'fail',
+      details: `Unknown branching strategy: "${branching.strategy}". Available: ${validStrategies.join(', ')}`,
+    };
+  }
+
+  const details: string[] = [`strategy: ${branching.strategy}`];
+  if (branching.mainBranch) details.push(`mainBranch: ${branching.mainBranch}`);
+  if (branching.developBranch) details.push(`developBranch: ${branching.developBranch}`);
+  if (branching.branchTemplate) details.push(`branchTemplate: ${branching.branchTemplate}`);
+  if (branching.tagTemplate) details.push(`tagTemplate: ${branching.tagTemplate}`);
+
+  return {
+    name: 'branching_strategy',
+    status: 'pass',
+    details: `Branching: ${details.join(', ')}`,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Main entry point
 // ---------------------------------------------------------------------------
@@ -200,6 +234,11 @@ export async function runValidateCommand(
       status: 'warn',
       details: 'Skipped: git repository is not accessible.',
     });
+  }
+
+  // 4. Branching strategy check
+  if (loadResult) {
+    allChecks.push(checkBranchingStrategy(loadResult.config));
   }
 
   // Build result

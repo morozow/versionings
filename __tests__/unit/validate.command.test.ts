@@ -298,3 +298,145 @@ describe('validate.command — provenance in output', () => {
     );
   });
 });
+
+describe('validate.command — branching strategy check', () => {
+  test('returns branching_strategy pass with default when no git.branching configured', async () => {
+    const deps = makeDeps();
+
+    const result = await runValidateCommand({ json: false }, deps);
+
+    const bsCheck = result.checks.find((c) => c.name === 'branching_strategy');
+    expect(bsCheck).toBeDefined();
+    expect(bsCheck!.status).toBe('pass');
+    expect(bsCheck!.details).toContain('default');
+    expect(bsCheck!.details).toContain('backward compatible');
+  });
+
+  test('returns branching_strategy pass with default when strategy is "default"', async () => {
+    const configLoader = createMockConfigLoader(makeConfigLoadResult({
+      config: {
+        git: {
+          platform: 'github',
+          url: 'https://github.com/org/repo',
+          pr: { target: 'main' },
+          remote: 'origin',
+          branchType: { version: 'version' },
+          limits: { branchMaxCommentLength: 96 },
+          commit: { message: { semver: {} } },
+          branching: { strategy: 'default', mainBranch: 'master', developBranch: 'develop' },
+        },
+      } as any,
+    }));
+    const deps = makeDeps({ configLoader });
+
+    const result = await runValidateCommand({ json: false }, deps);
+
+    const bsCheck = result.checks.find((c) => c.name === 'branching_strategy');
+    expect(bsCheck).toBeDefined();
+    expect(bsCheck!.status).toBe('pass');
+    expect(bsCheck!.details).toContain('default');
+  });
+
+  test('returns branching_strategy pass with details for trunk-based strategy', async () => {
+    const configLoader = createMockConfigLoader(makeConfigLoadResult({
+      config: {
+        git: {
+          platform: 'github',
+          url: 'https://github.com/org/repo',
+          pr: { target: 'main' },
+          remote: 'origin',
+          branchType: { version: 'version' },
+          limits: { branchMaxCommentLength: 96 },
+          commit: { message: { semver: {} } },
+          branching: { strategy: 'trunk-based', mainBranch: 'main' },
+        },
+      } as any,
+    }));
+    const deps = makeDeps({ configLoader });
+
+    const result = await runValidateCommand({ json: false }, deps);
+
+    const bsCheck = result.checks.find((c) => c.name === 'branching_strategy');
+    expect(bsCheck).toBeDefined();
+    expect(bsCheck!.status).toBe('pass');
+    expect(bsCheck!.details).toContain('trunk-based');
+    expect(bsCheck!.details).toContain('mainBranch: main');
+  });
+
+  test('returns branching_strategy pass with all details for git-flow strategy', async () => {
+    const configLoader = createMockConfigLoader(makeConfigLoadResult({
+      config: {
+        git: {
+          platform: 'github',
+          url: 'https://github.com/org/repo',
+          pr: { target: 'main' },
+          remote: 'origin',
+          branchType: { version: 'version' },
+          limits: { branchMaxCommentLength: 96 },
+          commit: { message: { semver: {} } },
+          branching: {
+            strategy: 'git-flow',
+            mainBranch: 'main',
+            developBranch: 'develop',
+            branchTemplate: 'release/{version}',
+            tagTemplate: 'v{version}',
+          },
+        },
+      } as any,
+    }));
+    const deps = makeDeps({ configLoader });
+
+    const result = await runValidateCommand({ json: false }, deps);
+
+    const bsCheck = result.checks.find((c) => c.name === 'branching_strategy');
+    expect(bsCheck).toBeDefined();
+    expect(bsCheck!.status).toBe('pass');
+    expect(bsCheck!.details).toContain('git-flow');
+    expect(bsCheck!.details).toContain('mainBranch: main');
+    expect(bsCheck!.details).toContain('developBranch: develop');
+    expect(bsCheck!.details).toContain('branchTemplate: release/{version}');
+    expect(bsCheck!.details).toContain('tagTemplate: v{version}');
+  });
+
+  test('returns branching_strategy fail for unknown strategy', async () => {
+    const configLoader = createMockConfigLoader(makeConfigLoadResult({
+      config: {
+        git: {
+          platform: 'github',
+          url: 'https://github.com/org/repo',
+          pr: { target: 'main' },
+          remote: 'origin',
+          branchType: { version: 'version' },
+          limits: { branchMaxCommentLength: 96 },
+          commit: { message: { semver: {} } },
+          branching: { strategy: 'unknown-strategy' },
+        },
+      } as any,
+    }));
+    const deps = makeDeps({ configLoader });
+
+    const result = await runValidateCommand({ json: false }, deps);
+
+    expect(result.valid).toBe(false);
+    const bsCheck = result.checks.find((c) => c.name === 'branching_strategy');
+    expect(bsCheck).toBeDefined();
+    expect(bsCheck!.status).toBe('fail');
+    expect(bsCheck!.details).toContain('Unknown branching strategy');
+    expect(bsCheck!.details).toContain('unknown-strategy');
+    expect(bsCheck!.details).toContain('trunk-based');
+    expect(bsCheck!.details).toContain('git-flow');
+  });
+
+  test('does not include branching_strategy check when config fails to load', async () => {
+    const configLoader = createMockConfigLoader(
+      undefined,
+      new VersioningsError(EXIT_CODES.CONFIG_ERROR, 'bad config', {}),
+    );
+    const deps = makeDeps({ configLoader });
+
+    const result = await runValidateCommand({ json: false }, deps);
+
+    const bsCheck = result.checks.find((c) => c.name === 'branching_strategy');
+    expect(bsCheck).toBeUndefined();
+  });
+});

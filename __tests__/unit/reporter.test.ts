@@ -513,3 +513,79 @@ describe('createReporter — human-readable mode (PR/MR output)', () => {
     expect(output).toContain('PR/MR creation: URL');
   });
 });
+
+
+// --- Strategy and policyCheck output tests (Task 11.5) ---
+
+import { EXIT_CODES } from '../../errors';
+
+describe('reporter — strategy and policyCheck output', () => {
+  // JSON mode tests
+  test('reportSuccess JSON includes strategy field when present', () => {
+    const reporter = createReporter({ json: true });
+    const result: PipelineResult = {
+      ...successResult,
+      strategy: 'trunk-based',
+    };
+    const output = reporter.reportSuccess(result);
+    const parsed = JSON.parse(output);
+    expect(parsed.strategy).toBe('trunk-based');
+  });
+
+  test('reportSuccess JSON includes policyCheck field when present', () => {
+    const reporter = createReporter({ json: true });
+    const result: PipelineResult = {
+      ...successResult,
+      policyCheck: { warnings: ['test'], errors: [], protectionInfo: null },
+    };
+    const output = reporter.reportSuccess(result);
+    const parsed = JSON.parse(output);
+    expect(parsed.policyCheck).toBeDefined();
+    expect(parsed.policyCheck.warnings).toEqual(['test']);
+    expect(parsed.policyCheck.errors).toEqual([]);
+    expect(parsed.policyCheck.protectionInfo).toBeNull();
+  });
+
+  test('reportSuccess JSON omits strategy when absent (backward compatibility)', () => {
+    const reporter = createReporter({ json: true });
+    const output = reporter.reportSuccess(successResult);
+    const parsed = JSON.parse(output);
+    expect(parsed.strategy).toBeUndefined();
+  });
+
+  // Human-readable mode tests
+  test('reportSuccess human-readable includes Strategy line when present', () => {
+    const reporter = createReporter({ json: false });
+    const result: PipelineResult = {
+      ...successResult,
+      strategy: 'git-flow',
+    };
+    const output = reporter.reportSuccess(result);
+    expect(output).toContain('Strategy: git-flow');
+  });
+
+  test('reportSuccess human-readable omits Strategy line when absent', () => {
+    const reporter = createReporter({ json: false });
+    const output = reporter.reportSuccess(successResult);
+    expect(output).not.toContain('Strategy:');
+  });
+
+  // POLICY_VIOLATION error tests
+  test('reportError JSON for POLICY_VIOLATION includes error code', () => {
+    const reporter = createReporter({ json: true });
+    const err = new VersioningsError(EXIT_CODES.POLICY_VIOLATION, 'Branch "main" is protected');
+    const output = reporter.reportError(err);
+    const parsed = JSON.parse(output);
+    expect(parsed.error.code).toBe('POLICY_VIOLATION');
+    expect(parsed.exitCode).toBe(10);
+    expect(parsed.success).toBe(false);
+  });
+
+  test('reportError human-readable for POLICY_VIOLATION includes code name', () => {
+    const reporter = createReporter({ json: false });
+    const err = new VersioningsError(EXIT_CODES.POLICY_VIOLATION, 'Branch "main" is protected');
+    const output = reporter.reportError(err);
+    expect(output).toContain('POLICY_VIOLATION');
+    expect(output).toContain('exit code 10');
+  });
+});

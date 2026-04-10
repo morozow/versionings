@@ -12,6 +12,7 @@ export interface ExitCodes {
   readonly INCOMPLETE_ROLLBACK: 7;
   readonly NO_OPERATION: 8;
   readonly USER_CANCELLED: 9;
+  readonly POLICY_VIOLATION: 10;
 }
 
 export const EXIT_CODES: ExitCodes = Object.freeze({
@@ -25,6 +26,7 @@ export const EXIT_CODES: ExitCodes = Object.freeze({
   INCOMPLETE_ROLLBACK: 7 as const,
   NO_OPERATION: 8 as const,
   USER_CANCELLED: 9 as const,
+  POLICY_VIOLATION: 10 as const,
 });
 
 export class VersioningsError extends Error {

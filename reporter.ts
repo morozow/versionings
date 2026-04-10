@@ -20,6 +20,8 @@ export interface PipelineResult {
   pullRequestUrl: string | null;
   exitCode: number;
   pullRequest?: PR_Result;
+  strategy?: string;
+  policyCheck?: { warnings: string[]; errors: string[]; protectionInfo: any };
 }
 
 export interface DryRunPlan {
@@ -40,6 +42,8 @@ export interface DryRunPlan {
     draft?: boolean;
     hasToken: boolean;
   };
+  strategy?: string;
+  policyCheck?: { warnings: string[]; errors: string[]; protectionInfo: any };
 }
 
 export interface ValidateResult {
@@ -118,12 +122,21 @@ export function createReporter(opts: ReporterOpts): Reporter {
           platform: result.pullRequest.platform,
         };
       }
+      if (result.strategy !== undefined) {
+        obj.strategy = result.strategy;
+      }
+      if (result.policyCheck !== undefined) {
+        obj.policyCheck = result.policyCheck;
+      }
       return JSON.stringify(obj) + '\n';
     }
 
     const lines: string[] = [];
     lines.push(`${ANSI_FG_GREEN}Version updated successfully.${ANSI_FG_NC}`);
     lines.push(`Version: ${result.version}`);
+    if (result.strategy !== undefined) {
+      lines.push(`Strategy: ${result.strategy}`);
+    }
     lines.push(`Branch: ${result.branch}`);
     lines.push(`Semantic version: ${result.semver}`);
 
@@ -173,6 +186,11 @@ export function createReporter(opts: ReporterOpts): Reporter {
         lines.push(`  ${key}: ${formatted}`);
       }
     }
+    if (error.code === EXIT_CODES.POLICY_VIOLATION && error.details) {
+      if (error.details.recommendation) {
+        lines.push(`  Recommendation: ${error.details.recommendation}`);
+      }
+    }
     return lines.join('\n');
   }
 
@@ -186,6 +204,9 @@ export function createReporter(opts: ReporterOpts): Reporter {
     lines.push(`Current version: ${plan.currentVersion}`);
     lines.push(`Next version: ${plan.nextVersion}`);
     lines.push(`Semantic version: ${plan.semver}`);
+    if (plan.strategy !== undefined) {
+      lines.push(`Strategy: ${plan.strategy}`);
+    }
     lines.push(`Branch: ${plan.branch}`);
     lines.push(`Tag: ${plan.tag}`);
     lines.push(`Commit message: ${plan.commitMessage}`);
@@ -211,6 +232,12 @@ export function createReporter(opts: ReporterOpts): Reporter {
     plan.steps.forEach((step, i) => {
       lines.push(`  ${i + 1}. ${step}`);
     });
+    if (plan.policyCheck && plan.policyCheck.warnings && plan.policyCheck.warnings.length > 0) {
+      lines.push('');
+      for (const warning of plan.policyCheck.warnings) {
+        lines.push(`${ANSI_FG_YELLOW}⚠ ${warning}${ANSI_FG_NC}`);
+      }
+    }
     return lines.join('\n');
   }
 
