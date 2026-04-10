@@ -264,3 +264,304 @@ describe('E2E: release and plan with --semver=auto', () => {
     expect(state.tags).toContain('1.0.1--test');
   }, 30000);
 });
+
+
+// ── Critical production-readiness tests ─────────────────────────────────────
+
+/**
+ * Helper: write version.json with conventionalCommits/changelog config.
+ */
+function writeVersionJsonWithCC(
+  repoDir: string,
+  remoteUrl: string,
+  opts: {
+    fallbackBump?: string | null;
+    changelogFile?: string;
+  } = {},
+): void {
+  const config: any = {
+    git: { platform: 'github', url: remoteUrl },
+  };
+  if (opts.fallbackBump !== undefined || opts.changelogFile !== undefined) {
+    if (opts.fallbackBump !== undefined) {
+      config.conventionalCommits = { fallbackBump: opts.fallbackBump };
+    }
+    if (opts.changelogFile !== undefined) {
+      config.changelog = { file: opts.changelogFile };
+    }
+  }
+  fs.writeFileSync(
+    path.join(repoDir, 'version.json'),
+    JSON.stringify(config, null, 2) + '\n',
+  );
+  git(repoDir, 'add version.json');
+  git(repoDir, 'commit -m "chore: update version.json"');
+}
+
+describe('E2E: critical production-readiness — auto-bump edge cases', () => {
+  test('release --semver=auto with breaking change → major bump (2.0.0)', () => {
+    const { repoDir, remoteDir, remoteUrl } = createRepoFixture();
+    dirs.push(repoDir, remoteDir);
+
+    // Add a breaking commit
+    fs.writeFileSync(path.join(repoDir, 'c.txt'), 'c\n');
+    git(repoDir, 'add c.txt');
+    git(repoDir, 'commit -m "feat!: redesign API completely"');
+
+    const { stdout, exitCode } = runCli(
+      ['release', '--semver=auto', '--branch=breaking', '--yes', '--json'],
+      { cwd: repoDir },
+    );
+
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(stdout.trim());
+    expect(parsed.success).toBe(true);
+    expect(parsed.version).toBe('2.0.0');
+    expect(parsed.autoBump).toBeDefined();
+    expect(parsed.autoBump.detectedBump).toBe('major');
+    expect(parsed.autoBump.breakingChanges).toBeGreaterThanOrEqual(1);
+  }, 30000);
+
+  test('release --semver=auto with BREAKING CHANGE footer → major bump', () => {
+    const { repoDir, remoteDir } = createRepoFixture();
+    dirs.push(repoDir, remoteDir);
+
+    fs.writeFileSync(path.join(repoDir, 'd.txt'), 'd\n');
+    git(repoDir, 'add d.txt');
+    git(repoDir, `commit -m "refactor: change internals" -m "" -m "BREAKING CHANGE: removed old API"`);
+
+    const { stdout, exitCode } = runCli(
+      ['release', '--semver=auto', '--branch=bc-footer', '--yes', '--json'],
+      { cwd: repoDir },
+    );
+
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(stdout.trim());
+    expect(parsed.version).toBe('2.0.0');
+    expect(parsed.autoBump.detectedBump).toBe('major');
+  }, 30000);
+
+  test('release --semver=auto --preid=beta → prerelease version (1.1.0-beta.0)', () => {
+    const { repoDir, remoteDir } = createRepoFixture();
+    dirs.push(repoDir, remoteDir);
+
+    addConventionalCommits(repoDir);
+
+    const { stdout, exitCode } = runCli(
+      ['release', '--semver=auto', '--branch=beta-test', '--preid=beta', '--yes', '--json'],
+      { cwd: repoDir },
+    );
+
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(stdout.trim());
+    expect(parsed.success).toBe(true);
+    // feat → minor → preminor with beta → 1.1.0-beta.0
+    expect(parsed.version).toBe('1.1.0-beta.0');
+    expect(parsed.semver).toBe('preminor');
+    expect(parsed.autoBump.detectedBump).toBe('minor');
+  }, 30000);
+
+  test('release --semver=auto with fallbackBump=patch and no CC → uses fallback (1.0.1)', () => {
+    const { repoDir, remoteDir, remoteUrl } = createRepoFixture();
+    dirs.push(repoDir, remoteDir);
+
+    // Write config with fallbackBump
+    writeVersionJsonWithCC(repoDir, remoteUrl, { fallbackBump: 'patch' });
+
+    const { stdout, exitCode } = runCli(
+      ['release', '--semver=auto', '--branch=fallback-test', '--yes', '--json'],
+      { cwd: repoDir },
+    );
+
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(stdout.trim());
+    expect(parsed.success).toBe(true);
+    expect(parsed.version).toBe('1.0.1');
+    expect(parsed.autoBump.detectedBump).toBe('patch');
+  }, 30000);
+});
+
+describe('E2E: critical production-readiness — changelog file operations', () => {
+  test('release --semver=auto with changelog.file → file created and included in commit', () => {
+    const { repoDir, remoteDir, remoteUrl } = createRepoFixture();
+    dirs.push(repoDir, remoteDir);
+
+    // Write config with changelog.file
+    writeVersionJsonWithCC(repoDir, remoteUrl, { changelogFile: 'CHANGELOG.md' });
+
+    // Add conventional commits after config update
+    fs.writeFileSync(path.join(repoDir, 'e.txt'), 'e\n');
+    git(repoDir, 'add e.txt');
+    git(repoDir, 'commit -m "feat: add search"');
+
+    fs.writeFileSync(path.join(repoDir, 'f.txt'), 'f\n');
+    git(repoDir, 'add f.txt');
+    git(repoDir, 'commit -m "fix: handle empty input"');
+
+    const { exitCode } = runCli(
+      ['release', '--semver=auto', '--branch=cl-test', '--yes'],
+      { cwd: repoDir },
+    );
+
+    expect(exitCode).toBe(0);
+
+    // Verify changelog file exists
+    const changelogPath = path.join(repoDir, 'CHANGELOG.md');
+    expect(fs.existsSync(changelogPath)).toBe(true);
+
+    const content = fs.readFileSync(changelogPath, 'utf8');
+    expect(content).toContain('# Changelog');
+    expect(content).toContain('Features');
+    expect(content).toContain('add search');
+    expect(content).toContain('Bug Fixes');
+    expect(content).toContain('handle empty input');
+
+    // Verify clean tree (changelog was committed)
+    // Note: .versionings/ dir may be created by operation log — filter it out
+    const state = snapshotRepoState(repoDir);
+    const relevantStatus = state.status
+      .split('\n')
+      .filter((l: string) => l.trim() && !l.includes('.versionings'))
+      .join('\n');
+    expect(relevantStatus).toBe('');
+  }, 30000);
+
+  test('changelog --output to existing file → prepend without losing old content', () => {
+    const { repoDir, remoteDir } = createRepoFixture();
+    dirs.push(repoDir, remoteDir);
+
+    // Create existing CHANGELOG.md with old content
+    const changelogPath = path.join(repoDir, 'CHANGELOG.md');
+    const oldContent = '# Changelog\n\n## [0.9.0] - 2023-06-01\n\n### Features\n\n- old feature from v0.9\n';
+    fs.writeFileSync(changelogPath, oldContent);
+    git(repoDir, 'add CHANGELOG.md');
+    git(repoDir, 'commit -m "chore: add old changelog"');
+
+    // Add new conventional commits
+    addConventionalCommits(repoDir);
+
+    const { exitCode } = runCli(
+      ['changelog', '--output=CHANGELOG.md'],
+      { cwd: repoDir },
+    );
+
+    expect(exitCode).toBe(0);
+
+    const content = fs.readFileSync(changelogPath, 'utf8');
+
+    // Old content preserved
+    expect(content).toContain('old feature from v0.9');
+    expect(content).toContain('[0.9.0]');
+
+    // New content present
+    expect(content).toContain('add feature A');
+    expect(content).toContain('resolve bug B');
+
+    // # Changelog header appears exactly once
+    const headerCount = (content.match(/^# Changelog$/gm) || []).length;
+    expect(headerCount).toBe(1);
+
+    // New content appears before old content
+    const newIdx = content.indexOf('add feature A');
+    const oldIdx = content.indexOf('old feature from v0.9');
+    expect(newIdx).toBeLessThan(oldIdx);
+  }, 30000);
+
+  test('changelog --format=plain → no markdown markers in output', () => {
+    const { repoDir, remoteDir } = createRepoFixture();
+    dirs.push(repoDir, remoteDir);
+
+    addConventionalCommits(repoDir);
+
+    const { stdout, exitCode } = runCli(
+      ['changelog', '--format=plain'],
+      { cwd: repoDir },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain('Features');
+    expect(stdout).toContain('add feature A');
+    // No ## or ### markdown markers
+    expect(stdout).not.toMatch(/^## /m);
+    expect(stdout).not.toMatch(/^### /m);
+  }, 30000);
+});
+
+describe('E2E: critical production-readiness — error output contracts', () => {
+  test('release --semver=auto --json without CC → stderr is valid JSON with exit code 11', () => {
+    const { repoDir, remoteDir } = createRepoFixture();
+    dirs.push(repoDir, remoteDir);
+
+    const { stderr, exitCode } = runCli(
+      ['release', '--semver=auto', '--branch=err-test', '--yes', '--json'],
+      { cwd: repoDir },
+    );
+
+    expect(exitCode).toBe(11);
+
+    const parsed = JSON.parse(stderr.trim());
+    expect(parsed.success).toBe(false);
+    expect(parsed.exitCode).toBe(11);
+    expect(parsed.error).toBeDefined();
+    expect(parsed.error.code).toBe('NO_CONVENTIONAL_COMMITS');
+    expect(typeof parsed.error.message).toBe('string');
+    expect(parsed.error.details).toBeDefined();
+  }, 30000);
+
+  test('plan --semver=auto with changelog.file → dry-run steps include changelog write', () => {
+    const { repoDir, remoteDir, remoteUrl } = createRepoFixture();
+    dirs.push(repoDir, remoteDir);
+
+    writeVersionJsonWithCC(repoDir, remoteUrl, { changelogFile: 'CHANGELOG.md' });
+
+    fs.writeFileSync(path.join(repoDir, 'g.txt'), 'g\n');
+    git(repoDir, 'add g.txt');
+    git(repoDir, 'commit -m "feat: add feature G"');
+
+    const { stdout, exitCode } = runCli(
+      ['plan', '--semver=auto', '--branch=plan-cl', '--json'],
+      { cwd: repoDir },
+    );
+
+    expect(exitCode).toBe(0);
+
+    const parsed = JSON.parse(stdout.trim());
+    expect(parsed.dryRun).toBe(true);
+    expect(parsed.autoBump).toBeDefined();
+
+    // Steps should mention changelog write
+    const hasChangelogStep = parsed.steps.some(
+      (s: string) => s.toLowerCase().includes('changelog'),
+    );
+    expect(hasChangelogStep).toBe(true);
+
+    // changelogPreview should be present
+    expect(parsed.changelogPreview).toBeDefined();
+    expect(typeof parsed.changelogPreview).toBe('string');
+    expect(parsed.changelogPreview.length).toBeGreaterThan(0);
+
+    // Dry-run must not create the file
+    expect(fs.existsSync(path.join(repoDir, 'CHANGELOG.md'))).toBe(false);
+  }, 30000);
+
+  test('release --semver=auto without tags → analyzes all commits from root', () => {
+    const { repoDir, remoteDir } = createRepoFixture();
+    dirs.push(repoDir, remoteDir);
+
+    // No version tags exist. Add conventional commits.
+    addConventionalCommits(repoDir);
+
+    const { stdout, exitCode } = runCli(
+      ['release', '--semver=auto', '--branch=no-tags', '--yes', '--json'],
+      { cwd: repoDir },
+    );
+
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(stdout.trim());
+    expect(parsed.success).toBe(true);
+    // feat → minor: 1.0.0 → 1.1.0
+    expect(parsed.version).toBe('1.1.0');
+    expect(parsed.autoBump).toBeDefined();
+    expect(parsed.autoBump.totalCommits).toBeGreaterThanOrEqual(2);
+  }, 30000);
+});
