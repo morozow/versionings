@@ -13,6 +13,7 @@ import * as fs from 'fs';
 import {
   createRepoFixture,
   snapshotRepoState,
+  assertNoMutation,
   cleanup,
   git,
 } from '../helpers/repo-fixture';
@@ -210,5 +211,211 @@ describe('E2E: Branching policy enforcement commands', () => {
     expect(branchingCheck).toBeDefined();
     // Current branch is main, trunk-based expects main/master → should pass
     expect(branchingCheck.status).toBe('pass');
+  }, 30000);
+
+  // Test 6: release with trunk-based strategy — no branch created, tag v{version}, git state correct
+  test('release with trunk-based strategy — no branch, tag v{version}, stays on main', () => {
+    const { repoDir, remoteDir, remoteUrl } = createRepoFixture();
+    dirs.push(repoDir, remoteDir);
+
+    const versionJson = {
+      git: {
+        platform: 'github',
+        url: remoteUrl,
+        branching: { strategy: 'trunk-based' },
+      },
+    };
+    fs.writeFileSync(path.join(repoDir, 'version.json'), JSON.stringify(versionJson, null, 2));
+    git(repoDir, 'add version.json');
+    git(repoDir, 'commit -m "update config"');
+
+    const { stdout, exitCode } = runCli(
+      ['release', '--semver=patch', '--branch=hotfix', '--yes'],
+      { cwd: repoDir },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain('1.0.1');
+
+    const state = snapshotRepoState(repoDir);
+    expect(state.version).toBe('1.0.1');
+    // Should stay on main — no new branch created
+    expect(state.branch).toBe('main');
+    // Tag should be v{version}, not {version}--{comment}
+    expect(state.tags).toContain('v1.0.1');
+    expect(state.tags).not.toContain('1.0.1--hotfix');
+    // No version/patch/... branch should exist
+    expect(state.branches).not.toContain(expect.stringContaining('version/'));
+  }, 30000);
+
+  // Test 7: release --json with trunk-based — JSON has strategy="trunk-based", branch is current branch
+  test('release --json with trunk-based — JSON has strategy field and no new branch', () => {
+    const { repoDir, remoteDir, remoteUrl } = createRepoFixture();
+    dirs.push(repoDir, remoteDir);
+
+    const versionJson = {
+      git: {
+        platform: 'github',
+        url: remoteUrl,
+        branching: { strategy: 'trunk-based' },
+      },
+    };
+    fs.writeFileSync(path.join(repoDir, 'version.json'), JSON.stringify(versionJson, null, 2));
+    git(repoDir, 'add version.json');
+    git(repoDir, 'commit -m "update config"');
+
+    const { stdout, exitCode } = runCli(
+      ['release', '--semver=patch', '--branch=fix', '--yes', '--json'],
+      { cwd: repoDir },
+    );
+
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(stdout.trim());
+    expect(parsed.success).toBe(true);
+    expect(parsed.strategy).toBe('trunk-based');
+    expect(parsed.version).toBe('1.0.1');
+    expect(parsed.tag).toBe('v1.0.1');
+    // branch should be 'main' (current branch, not a new one)
+    expect(parsed.branch).toBe('main');
+  }, 30000);
+
+  // Test 8: release with git-flow strategy (patch from main) — creates hotfix/{version}
+  test('release with git-flow strategy (patch) — creates hotfix/{version} branch', () => {
+    const { repoDir, remoteDir, remoteUrl } = createRepoFixture();
+    dirs.push(repoDir, remoteDir);
+
+    const versionJson = {
+      git: {
+        platform: 'github',
+        url: remoteUrl,
+        branching: { strategy: 'git-flow' },
+      },
+    };
+    fs.writeFileSync(path.join(repoDir, 'version.json'), JSON.stringify(versionJson, null, 2));
+    git(repoDir, 'add version.json');
+    git(repoDir, 'commit -m "update config"');
+
+    const { stdout, exitCode } = runCli(
+      ['release', '--semver=patch', '--branch=urgent', '--yes'],
+      { cwd: repoDir },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain('1.0.1');
+
+    const state = snapshotRepoState(repoDir);
+    expect(state.version).toBe('1.0.1');
+    expect(state.branches).toContain('hotfix/1.0.1');
+    expect(state.tags).toContain('v1.0.1');
+    expect(state.branch).toBe('hotfix/1.0.1');
+  }, 30000);
+
+  // Test 9: trunk-based on wrong branch — exit code 3 (INVALID_ARGS), no mutations
+  test('trunk-based on feature branch — exit code 3 (INVALID_ARGS), no mutations', () => {
+    const { repoDir, remoteDir, remoteUrl } = createRepoFixture();
+    dirs.push(repoDir, remoteDir);
+
+    const versionJson = {
+      git: {
+        platform: 'github',
+        url: remoteUrl,
+        branching: { strategy: 'trunk-based' },
+      },
+    };
+    fs.writeFileSync(path.join(repoDir, 'version.json'), JSON.stringify(versionJson, null, 2));
+    git(repoDir, 'add version.json');
+    git(repoDir, 'commit -m "update config"');
+
+    // Switch to a feature branch
+    git(repoDir, 'checkout -b feature/something');
+
+    const snapshotBefore = snapshotRepoState(repoDir);
+
+    const { exitCode, stderr } = runCli(
+      ['release', '--semver=patch', '--branch=fix', '--yes'],
+      { cwd: repoDir },
+    );
+
+    expect(exitCode).toBe(3); // INVALID_ARGS
+    expect(stderr).toContain('Trunk-based strategy requires');
+    assertNoMutation(repoDir, snapshotBefore);
+  }, 30000);
+
+  // Test 10: invalid strategy value in config — exit code 1 (CONFIG_ERROR)
+  test('invalid strategy value in config — exit code 1 (CONFIG_ERROR)', () => {
+    const { repoDir, remoteDir, remoteUrl } = createRepoFixture();
+    dirs.push(repoDir, remoteDir);
+
+    const versionJson = {
+      git: {
+        platform: 'github',
+        url: remoteUrl,
+        branching: { strategy: 'nonexistent-strategy' },
+      },
+    };
+    fs.writeFileSync(path.join(repoDir, 'version.json'), JSON.stringify(versionJson, null, 2));
+    git(repoDir, 'add version.json');
+    git(repoDir, 'commit -m "update config"');
+
+    const { exitCode } = runCli(
+      ['release', '--semver=patch', '--branch=fix', '--yes'],
+      { cwd: repoDir },
+    );
+
+    // JSON Schema validation rejects unknown strategy → CONFIG_ERROR (1)
+    expect(exitCode).toBe(1);
+  }, 30000);
+
+  // Test 11: git-flow minor on main (wrong branch) — exit code 3 (INVALID_ARGS)
+  test('git-flow minor on main — exit code 3 (INVALID_ARGS), requires develop', () => {
+    const { repoDir, remoteDir, remoteUrl } = createRepoFixture();
+    dirs.push(repoDir, remoteDir);
+
+    const versionJson = {
+      git: {
+        platform: 'github',
+        url: remoteUrl,
+        branching: { strategy: 'git-flow' },
+      },
+    };
+    fs.writeFileSync(path.join(repoDir, 'version.json'), JSON.stringify(versionJson, null, 2));
+    git(repoDir, 'add version.json');
+    git(repoDir, 'commit -m "update config"');
+
+    // We're on main, but git-flow minor requires develop
+    const { exitCode, stderr } = runCli(
+      ['release', '--semver=minor', '--branch=feature', '--yes'],
+      { cwd: repoDir },
+    );
+
+    expect(exitCode).toBe(3); // INVALID_ARGS
+    expect(stderr).toContain('develop');
+  }, 30000);
+
+  // Test 12: dry-run does not mutate with trunk-based strategy
+  test('dry-run with trunk-based — no mutations to repo', () => {
+    const { repoDir, remoteDir, remoteUrl } = createRepoFixture();
+    dirs.push(repoDir, remoteDir);
+
+    const versionJson = {
+      git: {
+        platform: 'github',
+        url: remoteUrl,
+        branching: { strategy: 'trunk-based' },
+      },
+    };
+    fs.writeFileSync(path.join(repoDir, 'version.json'), JSON.stringify(versionJson, null, 2));
+    git(repoDir, 'add version.json');
+    git(repoDir, 'commit -m "update config"');
+
+    const snapshotBefore = snapshotRepoState(repoDir);
+
+    const { exitCode } = runCli(
+      ['release', '--semver=patch', '--branch=fix', '--yes', '--dry-run'],
+      { cwd: repoDir },
+    );
+
+    expect(exitCode).toBe(0);
+    assertNoMutation(repoDir, snapshotBefore);
   }, 30000);
 });
