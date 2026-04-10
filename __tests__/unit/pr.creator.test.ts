@@ -433,3 +433,103 @@ describe('Building PR_Options from config', () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// Changelog body support (Req 9.3, 9.4)
+// ---------------------------------------------------------------------------
+
+describe('Changelog body in PR', () => {
+  test('uses changelogBody as body when no template is configured', async () => {
+    const mockProvider = makeMockProvider();
+    const deps = makeDeps({
+      registry: {
+        register: jest.fn(),
+        getProvider: jest.fn().mockReturnValue(mockProvider),
+        availablePlatforms: jest.fn().mockReturnValue(['github']),
+      },
+      changelogBody: '## Features\n- add login',
+    });
+    const config = makeConfig();
+
+    await createPR(config, 'feature/v1.2.3', 'Minor: v1.2.3', 'auto', deps);
+
+    expect(mockProvider.createPullRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ body: '## Features\n- add login' }),
+    );
+  });
+
+  test('merges template and changelogBody with --- separator', async () => {
+    const mockProvider = makeMockProvider();
+    const readFile = jest.fn().mockReturnValue('## PR Template\nPlease review');
+    const deps = makeDeps({
+      registry: {
+        register: jest.fn(),
+        getProvider: jest.fn().mockReturnValue(mockProvider),
+        availablePlatforms: jest.fn().mockReturnValue(['github']),
+      },
+      readFile,
+      changelogBody: '## Features\n- add login',
+    });
+    const config = makeConfig({
+      git: {
+        platform: 'github',
+        url: 'https://github.com/owner/repo',
+        pr: { target: 'main', template: '.github/PULL_REQUEST_TEMPLATE.md' },
+        api: { timeout: 30000 },
+      },
+    });
+
+    await createPR(config, 'feature/v1.2.3', 'Minor: v1.2.3', 'auto', deps);
+
+    expect(mockProvider.createPullRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: '## PR Template\nPlease review\n\n---\n\n## Features\n- add login',
+      }),
+    );
+  });
+
+  test('uses only template when changelogBody is not provided', async () => {
+    const mockProvider = makeMockProvider();
+    const readFile = jest.fn().mockReturnValue('## PR Template\nPlease review');
+    const deps = makeDeps({
+      registry: {
+        register: jest.fn(),
+        getProvider: jest.fn().mockReturnValue(mockProvider),
+        availablePlatforms: jest.fn().mockReturnValue(['github']),
+      },
+      readFile,
+    });
+    const config = makeConfig({
+      git: {
+        platform: 'github',
+        url: 'https://github.com/owner/repo',
+        pr: { target: 'main', template: '.github/PULL_REQUEST_TEMPLATE.md' },
+        api: { timeout: 30000 },
+      },
+    });
+
+    await createPR(config, 'feature/v1.2.3', 'Minor: v1.2.3', 'auto', deps);
+
+    expect(mockProvider.createPullRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ body: '## PR Template\nPlease review' }),
+    );
+  });
+
+  test('uses empty body when neither template nor changelogBody is provided', async () => {
+    const mockProvider = makeMockProvider();
+    const deps = makeDeps({
+      registry: {
+        register: jest.fn(),
+        getProvider: jest.fn().mockReturnValue(mockProvider),
+        availablePlatforms: jest.fn().mockReturnValue(['github']),
+      },
+    });
+    const config = makeConfig();
+
+    await createPR(config, 'feature/v1.2.3', 'Minor: v1.2.3', 'auto', deps);
+
+    expect(mockProvider.createPullRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ body: '' }),
+    );
+  });
+});

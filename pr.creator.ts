@@ -55,6 +55,7 @@ export interface PrCreatorDeps {
   ) => AuthResult;
   env: Record<string, string | undefined>;
   readFile?: (path: string) => string;
+  changelogBody?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -82,9 +83,20 @@ function buildPrOptions(
   branch: string,
   commitMessage: string,
   readFile?: (path: string) => string,
+  changelogBody?: string,
 ): PR_Options {
   const pr = cfg.git.pr;
-  const body = readTemplate(pr.template, readFile);
+  const template = readTemplate(pr.template, readFile);
+
+  // Merge template and changelog body
+  let body: string;
+  if (template && changelogBody) {
+    body = `${template}\n\n---\n\n${changelogBody}`;
+  } else if (changelogBody) {
+    body = changelogBody;
+  } else {
+    body = template;
+  }
 
   return {
     title: commitMessage,
@@ -199,7 +211,7 @@ export async function createPR(
   // --- Token available — attempt API creation ---
   const providerConfig = buildProviderConfig(cfg, auth);
   const provider = deps.registry.getProvider(providerConfig, deps.httpClient, deps.urlParser);
-  const prOptions = buildPrOptions(cfg, branch, commitMessage, deps.readFile);
+  const prOptions = buildPrOptions(cfg, branch, commitMessage, deps.readFile, deps.changelogBody);
 
   try {
     return await provider.createPullRequest(prOptions);

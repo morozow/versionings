@@ -8,7 +8,7 @@ import { EMPTY_LINE, SSH_URL_MARKER, ANSI_FG_RED, ANSI_FG_NC, stop } from './uti
 import type { VersioningsConfig } from './config.validator';
 
 export const AVAILABLE_SEMVERS: string[] = [
-  'patch', 'prepatch', 'minor', 'preminor', 'premajor', 'prerelease', 'major',
+  'patch', 'prepatch', 'minor', 'preminor', 'premajor', 'prerelease', 'major', 'auto',
 ];
 
 export const GIT_URL_REG_EX = /git@([\w\.]+):([\w\.\/-]+)/gi;

@@ -27,6 +27,8 @@ import type { Strategy_Registry } from './strategy.registry';
 import type { PolicyCheckResult, PolicyCheckerDeps } from './policy.checker';
 import type { Branching_Strategy, BranchResult } from './branching.strategy';
 import { createPR } from './pr.creator';
+import type { BumpResult, BumpPolicy, CommitAnalyzerDeps } from './commit.analyzer';
+import type { ChangelogOpts, ChangelogResult } from './changelog.generator';
 
 export interface PipelineOpts {
   semver: string;
@@ -49,12 +51,54 @@ export interface PipelineDeps {
   prCreator?: PrCreatorDeps;
   strategyRegistry?: Strategy_Registry;
   policyChecker?: (targetBranch: string, deps: PolicyCheckerDeps) => Promise<PolicyCheckResult>;
+  commitAnalyzer?: {
+    analyzeBump: (deps: CommitAnalyzerDeps) => Promise<BumpResult>;
+    bumpPolicy: BumpPolicy;
+    fallbackBump: 'major' | 'minor' | 'patch' | null;
+  };
+  changelogGenerator?: {
+    generateChangelog: (commits: any[], opts: ChangelogOpts) => ChangelogResult;
+    changelogConfig: ChangelogOpts;
+    changelogFile?: string;
+  };
+}
+
+/**
+ * Computes the new file content when prepending a changelog section.
+ *
+ * - If existingContent is null (file doesn't exist): creates `# Changelog\n\n<newSection>`
+ * - If existingContent starts with `# Changelog`: inserts newSection after the header, preserving the rest
+ * - Otherwise: prepends newSection before existingContent
+ *
+ * Pure function, no side effects.
+ */
+export function prependChangelogContent(
+  existingContent: string | null,
+  newSection: string,
+): string {
+  const changelogHeader = '# Changelog';
+
+  if (existingContent === null) {
+    return `${changelogHeader}\n\n${newSection}`;
+  }
+
+  if (existingContent.startsWith(changelogHeader)) {
+    const headerEnd = existingContent.indexOf('\n');
+    if (headerEnd === -1) {
+      return `${changelogHeader}\n\n${newSection}`;
+    }
+    const afterHeader = existingContent.slice(headerEnd + 1);
+    return `${changelogHeader}\n\n${newSection}\n${afterHeader}`;
+  }
+
+  return `${newSection}\n${existingContent}`;
 }
 
 /**
  * Orchestrates the full versioning workflow as a sequence of async steps.
  *
  * Stages:
+ *  0.5. Auto-bump resolution (when semver === 'auto')
  *  1. Validate input parameters
  *  2. Check git status (dirty tree)
  *  3. Check git remote matches config
@@ -63,17 +107,64 @@ export interface PipelineDeps {
  *  6. Check artifact uniqueness
  *  7. If dry-run: return DryRunPlan
  *  8–12. Mutation steps with rollback on error
+ *  10.5. Write changelog to file (when configured)
  *  13. Return PipelineResult
  */
 export async function runPipeline(
   opts: PipelineOpts,
   deps: PipelineDeps,
 ): Promise<PipelineResult | DryRunPlan> {
-  const { executor, config, rollbackManager, artifactChecker, operationLog, prCreator, strategyRegistry, policyChecker } = deps;
+  const { executor, config, rollbackManager, artifactChecker, operationLog, prCreator, strategyRegistry, policyChecker, commitAnalyzer, changelogGenerator } = deps;
   const { semver, branch, push, preid, dryRun, prMode, noPr } = opts;
 
+  // --- Stage 0.5: Auto-bump resolution (when semver === 'auto') ---
+  let resolvedSemver = semver;
+  let bumpResult: BumpResult | undefined;
+  let changelogText: string | undefined;
+  let autoBumpInfo: import('./reporter').AutoBumpInfo | undefined;
+
+  if (semver === 'auto') {
+    if (!commitAnalyzer) {
+      throw new VersioningsError(
+        EXIT_CODES.CONFIG_ERROR,
+        'semver=auto requires commitAnalyzer dependency',
+      );
+    }
+
+    bumpResult = await commitAnalyzer.analyzeBump({
+      executor,
+      bumpPolicy: commitAnalyzer.bumpPolicy,
+      fallbackBump: commitAnalyzer.fallbackBump,
+    });
+
+    resolvedSemver = bumpResult.bump;
+
+    // Convert bump to prerelease modifier when --preid is present
+    if (preid) {
+      const preMap: Record<string, string> = { major: 'premajor', minor: 'preminor', patch: 'prepatch' };
+      resolvedSemver = preMap[resolvedSemver] || resolvedSemver;
+    }
+
+    // Generate changelog when changelogGenerator is present
+    if (changelogGenerator) {
+      const result = changelogGenerator.generateChangelog(
+        bumpResult.commits,
+        changelogGenerator.changelogConfig,
+      );
+      changelogText = result.markdown;
+    }
+
+    autoBumpInfo = {
+      detectedBump: bumpResult.bump,
+      totalCommits: bumpResult.commits.length,
+      breakingChanges: bumpResult.breakingChanges.length,
+      commitsByType: bumpResult.commitsByType,
+      range: { from: bumpResult.range.from, to: bumpResult.range.to },
+    };
+  }
+
   // --- Stage 1: Validate input parameters ---
-  if (!semver || !AVAILABLE_SEMVERS.includes(semver)) {
+  if (!resolvedSemver || !AVAILABLE_SEMVERS.includes(resolvedSemver)) {
     throw new VersioningsError(
       EXIT_CODES.INVALID_ARGS,
       config.common.messages.unavailableSemanticVersion,
@@ -129,7 +220,7 @@ export async function runPipeline(
   const currentVersion: string = JSON.parse(pkgRaw).version;
 
   // Probe: run npm version to get next version, then undo
-  const npmCmd = `npm --no-git-tag-version version ${semver} --message "${semverNpmMessage(semver, branch, config)}" ${preidParam(preid)}`.trim();
+  const npmCmd = `npm --no-git-tag-version version ${resolvedSemver} --message "${semverNpmMessage(resolvedSemver, branch, config)}" ${preidParam(preid)}`.trim();
   const versionResult = await executor.run(npmCmd);
   const nextVersion = versionResult.stdout.trim().replace(/^v/, '');
 
@@ -156,7 +247,7 @@ export async function runPipeline(
     strategyName = (config as any).git?.branching?.strategy || 'default';
     const strategy: Branching_Strategy = strategyRegistry.getStrategy(strategyName!, config);
 
-    const strategyParams = { semver, version: nextVersion, comment: branch, config, currentBranch };
+    const strategyParams = { semver: resolvedSemver, version: nextVersion, comment: branch, config, currentBranch };
 
     const validation = strategy.validateContext(strategyParams);
     if (!validation.valid) {
@@ -168,9 +259,9 @@ export async function runPipeline(
     commitMessage = strategy.composeCommitMessage(strategyParams);
   } else {
     // Backward compatibility: use legacy functions
-    branchResult = { branchName: composeVersionBranchName(semver, nextVersion, branch, config), reuseBranch: false };
-    tagName = composeVersionTagName(semver, nextVersion, branch);
-    commitMessage = semverMessage(semver, nextVersion, config);
+    branchResult = { branchName: composeVersionBranchName(resolvedSemver, nextVersion, branch, config), reuseBranch: false };
+    tagName = composeVersionTagName(resolvedSemver, nextVersion, branch);
+    commitMessage = semverMessage(resolvedSemver, nextVersion, config);
   }
 
   const branchName = branchResult.branchName;
@@ -212,6 +303,13 @@ export async function runPipeline(
       steps.push(`git checkout -b ${branchResult.branchName}`);
     }
     steps.push(`git tag --annotate ${tagName} --message "${commitMessage}"`);
+
+    // Changelog file write step (dry-run)
+    if (changelogText && changelogGenerator?.changelogFile) {
+      steps.push(`write changelog to ${changelogGenerator.changelogFile}`);
+      steps.push(`git add ${changelogGenerator.changelogFile}`);
+    }
+
     steps.push(`git commit --all --message "${commitMessage}"`);
     if (push) {
       const pushBranch = branchResult.branchName || currentBranch;
@@ -224,13 +322,24 @@ export async function runPipeline(
       dryRun: true,
       currentVersion,
       nextVersion,
-      semver,
+      semver: resolvedSemver,
       branch: branchResult.branchName || currentBranch,
       tag: tagName,
       commitMessage,
       pullRequestUrl,
       steps,
     };
+
+    // Add autoBump info when semver was 'auto'
+    if (autoBumpInfo) {
+      plan.autoBump = autoBumpInfo;
+    }
+
+    // Add changelog preview (first 50 lines)
+    if (changelogText) {
+      const lines = changelogText.split('\n');
+      plan.changelogPreview = lines.slice(0, 50).join('\n');
+    }
 
     // Add strategy and policyCheck to dry-run plan if available
     if (strategyName) {
@@ -290,6 +399,18 @@ export async function runPipeline(
     rollbackManager.record(tagStep);
     executedSteps.push(tagStep);
 
+    // Stage 10.5: Write changelog to file (before git commit)
+    if (changelogText && changelogGenerator?.changelogFile) {
+      const changelogFile = changelogGenerator.changelogFile;
+      const existingContent = fs.existsSync(changelogFile)
+        ? fs.readFileSync(changelogFile, 'utf8')
+        : null;
+      const fileContent = prependChangelogContent(existingContent, changelogText);
+
+      fs.writeFileSync(changelogFile, fileContent, 'utf8');
+      await executor.run(`git add ${changelogFile}`);
+    }
+
     // Stage 11: Commit all changes
     await executor.run(`git commit --all --message "${commitMessage}"`);
     const commitStep: RollbackStep = { type: STEP_TYPES.COMMITTED, meta: {} };
@@ -314,12 +435,16 @@ export async function runPipeline(
         const prBranch = branchResult.branchName || currentBranch;
         if (prCreator) {
           try {
+            // Pass changelogText as PR body when available
+            const prDeps = changelogText
+              ? { ...prCreator, changelogBody: changelogText }
+              : prCreator;
             pullRequest = await createPR(
               config,
               prBranch,
               commitMessage,
               prMode || 'auto',
-              prCreator,
+              prDeps,
             );
             pullRequestUrl = pullRequest.url;
           } catch (err: any) {
@@ -346,12 +471,17 @@ export async function runPipeline(
       success: true,
       version: nextVersion,
       previousVersion: currentVersion,
-      semver,
+      semver: resolvedSemver,
       branch: branchResult.branchName || currentBranch,
       tag: tagName,
       pullRequestUrl,
       exitCode: EXIT_CODES.SUCCESS,
     };
+
+    // Add autoBump info when semver was 'auto'
+    if (autoBumpInfo) {
+      result.autoBump = autoBumpInfo;
+    }
 
     if (strategyName) {
       (result as any).strategy = strategyName;
@@ -367,7 +497,7 @@ export async function runPipeline(
         const entry: OperationLogEntry = {
           schemaVersion: 1,
           timestamp: new Date().toISOString(),
-          semver,
+          semver: resolvedSemver,
           version: nextVersion,
           previousVersion: currentVersion,
           branch: branchResult.branchName || currentBranch,
@@ -392,7 +522,7 @@ export async function runPipeline(
         const entry: OperationLogEntry = {
           schemaVersion: 1,
           timestamp: new Date().toISOString(),
-          semver,
+          semver: resolvedSemver,
           version: nextVersion,
           previousVersion: currentVersion,
           branch: branchResult.branchName || currentBranch,

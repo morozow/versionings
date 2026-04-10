@@ -11,6 +11,7 @@ import { ConfigProvenance } from './config.merger';
 import { VersioningsError, EXIT_CODES } from './errors';
 import { resolveAuth } from './auth.resolver';
 import { createHttpClient } from './http.client';
+import { parseCommit } from './commit.parser';
 
 // ---------------------------------------------------------------------------
 // Public interfaces
@@ -286,6 +287,106 @@ async function checkScmApi(
 }
 
 // ---------------------------------------------------------------------------
+// Conventional Commits history check
+// ---------------------------------------------------------------------------
+
+async function checkConventionalCommits(executor: Executor): Promise<DoctorCheck> {
+  try {
+    const result = await executor.run('git log -10 --format=%s');
+    const subjects = result.stdout.split('\n').filter((l) => l.trim() !== '');
+
+    if (subjects.length === 0) {
+      return {
+        name: 'conventional_commits',
+        status: 'warn',
+        found: 'no commits found',
+        expected: 'commits following Conventional Commits format',
+      };
+    }
+
+    let ccCount = 0;
+    for (const subject of subjects) {
+      const parsed = parseCommit(subject);
+      if (parsed.valid) {
+        ccCount++;
+      }
+    }
+
+    if (ccCount === 0) {
+      return {
+        name: 'conventional_commits',
+        status: 'warn',
+        found: `0/${subjects.length} recent commits match Conventional Commits format`,
+        expected: 'at least one commit in Conventional Commits format',
+      };
+    }
+
+    return {
+      name: 'conventional_commits',
+      status: 'pass',
+      found: `${ccCount}/${subjects.length} recent commits match Conventional Commits format`,
+    };
+  } catch {
+    return {
+      name: 'conventional_commits',
+      status: 'warn',
+      found: 'unable to read commit history',
+      expected: 'git log accessible',
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Conventional Commits & Changelog config check
+// ---------------------------------------------------------------------------
+
+function checkCCConfig(config: Record<string, any>): DoctorCheck {
+  const cc = config?.conventionalCommits;
+  const cl = config?.changelog;
+
+  const parts: string[] = [];
+
+  if (cc) {
+    const enabled = cc.enabled !== false ? 'enabled' : 'disabled';
+    parts.push(`conventionalCommits: ${enabled}`);
+    if (cc.fallbackBump !== undefined && cc.fallbackBump !== null) {
+      parts.push(`fallbackBump: ${cc.fallbackBump}`);
+    }
+  } else {
+    parts.push('conventionalCommits: not configured');
+  }
+
+  if (cl) {
+    if (cl.file) {
+      parts.push(`changelog.file: ${cl.file}`);
+    }
+    if (cl.excludeTypes && cl.excludeTypes.length > 0) {
+      parts.push(`changelog.excludeTypes: ${cl.excludeTypes.join(', ')}`);
+    }
+  } else {
+    parts.push('changelog: not configured');
+  }
+
+  const hasCc = !!cc;
+  const hasCl = !!cl;
+
+  if (!hasCc && !hasCl) {
+    return {
+      name: 'cc_config',
+      status: 'warn',
+      found: parts.join('; '),
+      expected: 'conventionalCommits and/or changelog sections in configuration',
+    };
+  }
+
+  return {
+    name: 'cc_config',
+    status: 'pass',
+    found: parts.join('; '),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Main entry point
 // ---------------------------------------------------------------------------
 
@@ -318,12 +419,15 @@ export async function runDoctorCommand(
   // 5. package.json presence
   checks.push(checkPackageJson(deps.cwd, exists));
 
-  // 6. SCM API availability + 7. Branching strategy check
+  // 6. Conventional Commits history (runs independently of config)
+  checks.push(await checkConventionalCommits(deps.executor));
+
+  // 7. SCM API availability + 8. Branching strategy + 9. CC/Changelog config
   try {
     const loadResult = deps.configLoader({ cwd: deps.cwd, env: deps.env });
     const configObj = loadResult.config as Record<string, any>;
 
-    // 6. SCM API availability (only when auth token is available)
+    // 7. SCM API availability (only when auth token is available)
     const scmCheck = await checkScmApi(
       configObj,
       deps.env,
@@ -331,11 +435,14 @@ export async function runDoctorCommand(
     );
     if (scmCheck) checks.push(scmCheck);
 
-    // 7. Branching strategy check
+    // 8. Branching strategy check
     const bsCheck = await checkBranchingStrategy(deps.executor, configObj);
     if (bsCheck) checks.push(bsCheck);
+
+    // 9. Conventional Commits & Changelog config check
+    checks.push(checkCCConfig(configObj));
   } catch (_) {
-    // Config load failed — skip SCM API and branching checks (config check already reported the error)
+    // Config load failed — skip SCM API, branching, and CC config checks (config check already reported the error)
   }
 
   // Output via reporter

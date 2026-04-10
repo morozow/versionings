@@ -300,6 +300,71 @@ describe('config.loader — loadConfig', () => {
       expect(result.config.git.branching.developBranch).toBe('dev');
     });
 
+    test('VERSIONINGS_CONVENTIONAL_COMMITS_ENABLED=true → conventionalCommits.enabled (boolean true)', () => {
+      const fs = createMockFs({
+        [path.join(CWD, 'version.json')]: JSON.stringify(VALID_GIT),
+      });
+      const result = loadConfig({
+        cwd: CWD,
+        env: { VERSIONINGS_CONVENTIONAL_COMMITS_ENABLED: 'true' },
+        ...fs,
+      });
+      expect(result.config.conventionalCommits!.enabled).toBe(true);
+      expect(typeof result.config.conventionalCommits!.enabled).toBe('boolean');
+    });
+
+    test('VERSIONINGS_CONVENTIONAL_COMMITS_ENABLED=false → conventionalCommits.enabled (boolean false)', () => {
+      const fs = createMockFs({
+        [path.join(CWD, 'version.json')]: JSON.stringify(VALID_GIT),
+      });
+      const result = loadConfig({
+        cwd: CWD,
+        env: { VERSIONINGS_CONVENTIONAL_COMMITS_ENABLED: 'false' },
+        ...fs,
+      });
+      expect(result.config.conventionalCommits!.enabled).toBe(false);
+      expect(typeof result.config.conventionalCommits!.enabled).toBe('boolean');
+    });
+
+    test('VERSIONINGS_CONVENTIONAL_COMMITS_FALLBACK_BUMP=patch → conventionalCommits.fallbackBump', () => {
+      const fs = createMockFs({
+        [path.join(CWD, 'version.json')]: JSON.stringify(VALID_GIT),
+      });
+      const result = loadConfig({
+        cwd: CWD,
+        env: { VERSIONINGS_CONVENTIONAL_COMMITS_FALLBACK_BUMP: 'patch' },
+        ...fs,
+      });
+      expect(result.config.conventionalCommits!.fallbackBump).toBe('patch');
+    });
+
+    test('VERSIONINGS_CONVENTIONAL_COMMITS_FALLBACK_BUMP=null → conventionalCommits.fallbackBump (actual null)', () => {
+      const fs = createMockFs({
+        [path.join(CWD, 'version.json')]: JSON.stringify(VALID_GIT),
+      });
+      const result = loadConfig({
+        cwd: CWD,
+        env: { VERSIONINGS_CONVENTIONAL_COMMITS_FALLBACK_BUMP: 'null' },
+        ...fs,
+      });
+      expect(result.config.conventionalCommits!.fallbackBump).toBeNull();
+    });
+
+    test('config without new env vars works as before (backward compatibility)', () => {
+      const fs = createMockFs({
+        [path.join(CWD, 'version.json')]: JSON.stringify(VALID_GIT),
+      });
+      const result = loadConfig({
+        cwd: CWD,
+        env: { VERSIONINGS_GIT_REMOTE: 'upstream' },
+        ...fs,
+      });
+      // No conventionalCommits env vars set → no conventionalCommits in merged config
+      // (defaults for conventionalCommits are applied by config.validator, not config.loader)
+      expect(result.config.git.remote).toBe('upstream');
+      expect(result.sources.some((s) => s.name === 'env')).toBe(true);
+    });
+
     test('empty env var values are ignored', () => {
       const fs = createMockFs({
         [path.join(CWD, 'version.json')]: JSON.stringify(VALID_GIT),

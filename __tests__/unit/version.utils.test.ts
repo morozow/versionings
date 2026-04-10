@@ -81,12 +81,12 @@ describe('composeVersionTagName()', () => {
 });
 
 describe('AVAILABLE_SEMVERS', () => {
-  test('contains all 7 semver types', () => {
-    expect(AVAILABLE_SEMVERS).toHaveLength(7);
+  test('contains all 8 semver types including auto', () => {
+    expect(AVAILABLE_SEMVERS).toHaveLength(8);
   });
 
   test('includes each expected semver type', () => {
-    const expected = ['patch', 'prepatch', 'minor', 'preminor', 'premajor', 'prerelease', 'major'];
+    const expected = ['patch', 'prepatch', 'minor', 'preminor', 'premajor', 'prerelease', 'major', 'auto'];
     expected.forEach((type) => {
       expect(AVAILABLE_SEMVERS).toContain(type);
     });

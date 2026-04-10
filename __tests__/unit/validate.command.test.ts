@@ -440,3 +440,289 @@ describe('validate.command — branching strategy check', () => {
     expect(bsCheck).toBeUndefined();
   });
 });
+
+describe('validate.command — conventional_commits check', () => {
+  test('returns pass with defaults when no conventionalCommits section', async () => {
+    const deps = makeDeps();
+
+    const result = await runValidateCommand({ json: false }, deps);
+
+    const ccCheck = result.checks.find((c) => c.name === 'conventional_commits');
+    expect(ccCheck).toBeDefined();
+    expect(ccCheck!.status).toBe('pass');
+    expect(ccCheck!.details).toContain('using defaults');
+  });
+
+  test('returns pass with details when conventionalCommits is configured', async () => {
+    const configLoader = createMockConfigLoader(makeConfigLoadResult({
+      config: {
+        git: {
+          platform: 'github',
+          url: 'https://github.com/org/repo',
+          pr: { target: 'main' },
+          remote: 'origin',
+          branchType: { version: 'version' },
+          limits: { branchMaxCommentLength: 96 },
+          commit: { message: { semver: {} } },
+        },
+        conventionalCommits: {
+          enabled: true,
+          types: { refactor: 'patch' },
+          fallbackBump: 'patch',
+        },
+      } as any,
+    }));
+    const deps = makeDeps({ configLoader });
+
+    const result = await runValidateCommand({ json: false }, deps);
+
+    const ccCheck = result.checks.find((c) => c.name === 'conventional_commits');
+    expect(ccCheck).toBeDefined();
+    expect(ccCheck!.status).toBe('pass');
+    expect(ccCheck!.details).toContain('enabled: true');
+    expect(ccCheck!.details).toContain('refactor→patch');
+    expect(ccCheck!.details).toContain('fallbackBump: patch');
+  });
+
+  test('returns warn when conventionalCommits.enabled is false', async () => {
+    const configLoader = createMockConfigLoader(makeConfigLoadResult({
+      config: {
+        git: {
+          platform: 'github',
+          url: 'https://github.com/org/repo',
+          pr: { target: 'main' },
+          remote: 'origin',
+          branchType: { version: 'version' },
+          limits: { branchMaxCommentLength: 96 },
+          commit: { message: { semver: {} } },
+        },
+        conventionalCommits: {
+          enabled: false,
+          types: {},
+          fallbackBump: null,
+        },
+      } as any,
+    }));
+    const deps = makeDeps({ configLoader });
+
+    const result = await runValidateCommand({ json: false }, deps);
+
+    const ccCheck = result.checks.find((c) => c.name === 'conventional_commits');
+    expect(ccCheck).toBeDefined();
+    expect(ccCheck!.status).toBe('warn');
+    expect(ccCheck!.details).toContain('enabled: false');
+  });
+
+  test('shows fallbackBump as none when null', async () => {
+    const configLoader = createMockConfigLoader(makeConfigLoadResult({
+      config: {
+        git: {
+          platform: 'github',
+          url: 'https://github.com/org/repo',
+          pr: { target: 'main' },
+          remote: 'origin',
+          branchType: { version: 'version' },
+          limits: { branchMaxCommentLength: 96 },
+          commit: { message: { semver: {} } },
+        },
+        conventionalCommits: {
+          enabled: true,
+          types: {},
+          fallbackBump: null,
+        },
+      } as any,
+    }));
+    const deps = makeDeps({ configLoader });
+
+    const result = await runValidateCommand({ json: false }, deps);
+
+    const ccCheck = result.checks.find((c) => c.name === 'conventional_commits');
+    expect(ccCheck).toBeDefined();
+    expect(ccCheck!.details).toContain('fallbackBump: none');
+  });
+
+  test('does not include conventional_commits check when config fails to load', async () => {
+    const configLoader = createMockConfigLoader(
+      undefined,
+      new VersioningsError(EXIT_CODES.CONFIG_ERROR, 'bad config', {}),
+    );
+    const deps = makeDeps({ configLoader });
+
+    const result = await runValidateCommand({ json: false }, deps);
+
+    const ccCheck = result.checks.find((c) => c.name === 'conventional_commits');
+    expect(ccCheck).toBeUndefined();
+  });
+});
+
+describe('validate.command — changelog_config check', () => {
+  test('returns pass with "not configured" when no changelog section', async () => {
+    const deps = makeDeps();
+
+    const result = await runValidateCommand({ json: false }, deps);
+
+    const clCheck = result.checks.find((c) => c.name === 'changelog_config');
+    expect(clCheck).toBeDefined();
+    expect(clCheck!.status).toBe('pass');
+    expect(clCheck!.details).toContain('not configured');
+  });
+
+  test('returns pass with file path when changelog.file is set', async () => {
+    const configLoader = createMockConfigLoader(makeConfigLoadResult({
+      config: {
+        git: {
+          platform: 'github',
+          url: 'https://github.com/org/repo',
+          pr: { target: 'main' },
+          remote: 'origin',
+          branchType: { version: 'version' },
+          limits: { branchMaxCommentLength: 96 },
+          commit: { message: { semver: {} } },
+        },
+        changelog: {
+          file: 'CHANGELOG.md',
+          groupTitles: {},
+          excludeTypes: [],
+          includeNonConventional: false,
+        },
+      } as any,
+    }));
+    const deps = makeDeps({ configLoader });
+
+    const result = await runValidateCommand({ json: false }, deps);
+
+    const clCheck = result.checks.find((c) => c.name === 'changelog_config');
+    expect(clCheck).toBeDefined();
+    expect(clCheck!.status).toBe('pass');
+    expect(clCheck!.details).toContain('file: CHANGELOG.md');
+  });
+
+  test('returns pass with custom groupTitles details', async () => {
+    const configLoader = createMockConfigLoader(makeConfigLoadResult({
+      config: {
+        git: {
+          platform: 'github',
+          url: 'https://github.com/org/repo',
+          pr: { target: 'main' },
+          remote: 'origin',
+          branchType: { version: 'version' },
+          limits: { branchMaxCommentLength: 96 },
+          commit: { message: { semver: {} } },
+        },
+        changelog: {
+          groupTitles: { feat: 'New Features', fix: 'Bugfixes' },
+          excludeTypes: [],
+          includeNonConventional: false,
+        },
+      } as any,
+    }));
+    const deps = makeDeps({ configLoader });
+
+    const result = await runValidateCommand({ json: false }, deps);
+
+    const clCheck = result.checks.find((c) => c.name === 'changelog_config');
+    expect(clCheck).toBeDefined();
+    expect(clCheck!.status).toBe('pass');
+    expect(clCheck!.details).toContain('custom groupTitles');
+    expect(clCheck!.details).toContain('feat');
+    expect(clCheck!.details).toContain('fix');
+  });
+
+  test('returns pass with excludeTypes details', async () => {
+    const configLoader = createMockConfigLoader(makeConfigLoadResult({
+      config: {
+        git: {
+          platform: 'github',
+          url: 'https://github.com/org/repo',
+          pr: { target: 'main' },
+          remote: 'origin',
+          branchType: { version: 'version' },
+          limits: { branchMaxCommentLength: 96 },
+          commit: { message: { semver: {} } },
+        },
+        changelog: {
+          groupTitles: {},
+          excludeTypes: ['chore', 'docs'],
+          includeNonConventional: false,
+        },
+      } as any,
+    }));
+    const deps = makeDeps({ configLoader });
+
+    const result = await runValidateCommand({ json: false }, deps);
+
+    const clCheck = result.checks.find((c) => c.name === 'changelog_config');
+    expect(clCheck).toBeDefined();
+    expect(clCheck!.details).toContain('excludeTypes: chore, docs');
+  });
+
+  test('returns pass with includeNonConventional when true', async () => {
+    const configLoader = createMockConfigLoader(makeConfigLoadResult({
+      config: {
+        git: {
+          platform: 'github',
+          url: 'https://github.com/org/repo',
+          pr: { target: 'main' },
+          remote: 'origin',
+          branchType: { version: 'version' },
+          limits: { branchMaxCommentLength: 96 },
+          commit: { message: { semver: {} } },
+        },
+        changelog: {
+          groupTitles: {},
+          excludeTypes: [],
+          includeNonConventional: true,
+        },
+      } as any,
+    }));
+    const deps = makeDeps({ configLoader });
+
+    const result = await runValidateCommand({ json: false }, deps);
+
+    const clCheck = result.checks.find((c) => c.name === 'changelog_config');
+    expect(clCheck).toBeDefined();
+    expect(clCheck!.details).toContain('includeNonConventional: true');
+  });
+
+  test('returns pass with "configured with defaults" when changelog section has only defaults', async () => {
+    const configLoader = createMockConfigLoader(makeConfigLoadResult({
+      config: {
+        git: {
+          platform: 'github',
+          url: 'https://github.com/org/repo',
+          pr: { target: 'main' },
+          remote: 'origin',
+          branchType: { version: 'version' },
+          limits: { branchMaxCommentLength: 96 },
+          commit: { message: { semver: {} } },
+        },
+        changelog: {
+          groupTitles: {},
+          excludeTypes: [],
+          includeNonConventional: false,
+        },
+      } as any,
+    }));
+    const deps = makeDeps({ configLoader });
+
+    const result = await runValidateCommand({ json: false }, deps);
+
+    const clCheck = result.checks.find((c) => c.name === 'changelog_config');
+    expect(clCheck).toBeDefined();
+    expect(clCheck!.status).toBe('pass');
+    expect(clCheck!.details).toContain('configured with defaults');
+  });
+
+  test('does not include changelog_config check when config fails to load', async () => {
+    const configLoader = createMockConfigLoader(
+      undefined,
+      new VersioningsError(EXIT_CODES.CONFIG_ERROR, 'bad config', {}),
+    );
+    const deps = makeDeps({ configLoader });
+
+    const result = await runValidateCommand({ json: false }, deps);
+
+    const clCheck = result.checks.find((c) => c.name === 'changelog_config');
+    expect(clCheck).toBeUndefined();
+  });
+});

@@ -17,6 +17,11 @@ import { runPlanCommand } from './plan.command';
 import { runReleaseCommand } from './release.command';
 import { runRollbackCommand } from './rollback.command';
 import { runDoctorCommand } from './doctor.command';
+import { runChangelogCommand } from './changelog.command';
+import { analyzeBump, DEFAULT_BUMP_POLICY } from './commit.analyzer';
+import type { BumpPolicy } from './commit.analyzer';
+import { generateChangelog, DEFAULT_GROUP_TITLES } from './changelog.generator';
+import type { ChangelogOpts } from './changelog.generator';
 import { SUBCOMMANDS, preprocessArgv, buildCli } from './command.router';
 import { EXIT_CODES, VersioningsError } from './errors';
 import { resolveAuth, maskToken } from './auth.resolver';
@@ -182,6 +187,10 @@ async function handlePlan(args: any): Promise<void> {
         prCreator: buildPrCreatorDeps(),
         strategyRegistry: createStrategyRegistry(),
         policyChecker: checkPolicy,
+        ...(args.semver === 'auto' ? {
+          commitAnalyzer: resolveCommitAnalyzerDeps(config),
+          changelogGenerator: resolveChangelogGeneratorDeps(config),
+        } : {}),
       },
       reporter,
       stdout: process.stdout,
@@ -245,6 +254,10 @@ async function handleRelease(args: any): Promise<void> {
         prCreator: buildPrCreatorDeps(),
         strategyRegistry: createStrategyRegistry(),
         policyChecker: checkPolicy,
+        ...(args.semver === 'auto' ? {
+          commitAnalyzer: resolveCommitAnalyzerDeps(config),
+          changelogGenerator: resolveChangelogGeneratorDeps(config),
+        } : {}),
       },
       interactionManager,
       operationLog,
@@ -342,6 +355,73 @@ async function handleDoctor(args: any): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Config helpers for Version Intelligence
+// ---------------------------------------------------------------------------
+
+function resolveCommitAnalyzerDeps(config: any) {
+  const cc = config.conventionalCommits ?? { enabled: true, types: DEFAULT_BUMP_POLICY, fallbackBump: null };
+  const bumpPolicy: BumpPolicy = cc.types ?? DEFAULT_BUMP_POLICY;
+  const fallbackBump: 'major' | 'minor' | 'patch' | null = cc.fallbackBump ?? null;
+  return { analyzeBump, bumpPolicy, fallbackBump };
+}
+
+function resolveChangelogGeneratorDeps(config: any) {
+  const cl = config.changelog ?? { groupTitles: DEFAULT_GROUP_TITLES, excludeTypes: [], includeNonConventional: false };
+  const cc = config.conventionalCommits ?? { types: DEFAULT_BUMP_POLICY };
+  const bumpPolicy: BumpPolicy = cc.types ?? DEFAULT_BUMP_POLICY;
+
+  const changelogConfig: ChangelogOpts = {
+    version: null,
+    date: new Date().toISOString().slice(0, 10),
+    format: 'markdown',
+    groupTitles: cl.groupTitles ?? DEFAULT_GROUP_TITLES,
+    excludeTypes: cl.excludeTypes ?? [],
+    includeNonConventional: cl.includeNonConventional ?? false,
+    bumpPolicy,
+  };
+
+  return {
+    generateChangelog,
+    changelogConfig,
+    changelogFile: cl.file,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Changelog handler
+// ---------------------------------------------------------------------------
+
+async function handleChangelog(args: any): Promise<void> {
+  const cwd = process.cwd();
+  const config = loadAndValidateConfig(path.join(cwd, 'version.json'));
+  const executor = createExecutor({ verbose: args.verbose });
+
+  const cc = config.conventionalCommits ?? { types: DEFAULT_BUMP_POLICY };
+  const cl = config.changelog ?? { groupTitles: DEFAULT_GROUP_TITLES, excludeTypes: [], includeNonConventional: false };
+  const bumpPolicy: BumpPolicy = (cc.types ?? DEFAULT_BUMP_POLICY) as BumpPolicy;
+
+  await runChangelogCommand(
+    {
+      from: args.from,
+      to: args.to,
+      output: args.output,
+      format: args.format,
+      json: args.json,
+    },
+    {
+      executor,
+      bumpPolicy,
+      changelogConfig: {
+        groupTitles: cl.groupTitles ?? DEFAULT_GROUP_TITLES,
+        excludeTypes: cl.excludeTypes ?? [],
+        includeNonConventional: cl.includeNonConventional ?? false,
+      },
+      stdout: process.stdout,
+    },
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -393,6 +473,9 @@ async function main(): Promise<void> {
       break;
     case 'doctor':
       await handleDoctor(args);
+      break;
+    case 'changelog':
+      await handleChangelog(args);
       break;
     default: {
       // Should not reach here due to strictCommands, but just in case

@@ -6,6 +6,8 @@ import { Executor } from './executor';
 import { Reporter, ValidateResult } from './reporter';
 import { ConfigProvenance } from './config.merger';
 import { VersioningsError, EXIT_CODES } from './errors';
+import { DEFAULT_BUMP_POLICY } from './commit.analyzer';
+import { DEFAULT_GROUP_TITLES } from './changelog.generator';
 
 // ---------------------------------------------------------------------------
 // Public interfaces
@@ -190,6 +192,94 @@ function checkBranchingStrategy(
   };
 }
 
+function checkConventionalCommits(
+  config: any,
+): ValidateResult['checks'][0] {
+  const cc = config?.conventionalCommits;
+  if (!cc) {
+    return {
+      name: 'conventional_commits',
+      status: 'pass',
+      details: 'Conventional Commits: using defaults (enabled, no fallback bump)',
+    };
+  }
+
+  const enabled = cc.enabled !== false;
+  const types = cc.types || {};
+  const fallbackBump = cc.fallbackBump ?? null;
+
+  // Determine which types are overridden vs defaults
+  const overridden: string[] = [];
+  for (const [type, level] of Object.entries(types)) {
+    const defaultLevel = (DEFAULT_BUMP_POLICY as Record<string, string>)[type];
+    if (level !== defaultLevel) {
+      overridden.push(`${type}→${level}`);
+    }
+  }
+
+  const details: string[] = [`enabled: ${enabled}`];
+  if (overridden.length > 0) {
+    details.push(`overridden types: ${overridden.join(', ')}`);
+  }
+  details.push(`fallbackBump: ${fallbackBump === null ? 'none (error on missing CC)' : fallbackBump}`);
+
+  return {
+    name: 'conventional_commits',
+    status: enabled ? 'pass' : 'warn',
+    details: `Conventional Commits: ${details.join(', ')}`,
+  };
+}
+
+function checkChangelog(
+  config: any,
+): ValidateResult['checks'][0] {
+  const cl = config?.changelog;
+  if (!cl) {
+    return {
+      name: 'changelog_config',
+      status: 'pass',
+      details: 'Changelog: not configured (defaults will be used when needed)',
+    };
+  }
+
+  const details: string[] = [];
+
+  if (cl.file) {
+    details.push(`file: ${cl.file}`);
+  }
+
+  const groupTitles = cl.groupTitles || {};
+  const customTitles = Object.entries(groupTitles).filter(
+    ([key, val]) => (DEFAULT_GROUP_TITLES as Record<string, string>)[key] !== val,
+  );
+  if (customTitles.length > 0) {
+    details.push(`custom groupTitles: ${customTitles.map(([k]) => k).join(', ')}`);
+  }
+
+  const excludeTypes: string[] = cl.excludeTypes || [];
+  if (excludeTypes.length > 0) {
+    details.push(`excludeTypes: ${excludeTypes.join(', ')}`);
+  }
+
+  if (cl.includeNonConventional === true) {
+    details.push('includeNonConventional: true');
+  }
+
+  if (details.length === 0) {
+    return {
+      name: 'changelog_config',
+      status: 'pass',
+      details: 'Changelog: configured with defaults',
+    };
+  }
+
+  return {
+    name: 'changelog_config',
+    status: 'pass',
+    details: `Changelog: ${details.join(', ')}`,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Main entry point
 // ---------------------------------------------------------------------------
@@ -239,6 +329,16 @@ export async function runValidateCommand(
   // 4. Branching strategy check
   if (loadResult) {
     allChecks.push(checkBranchingStrategy(loadResult.config));
+  }
+
+  // 5. Conventional Commits check
+  if (loadResult) {
+    allChecks.push(checkConventionalCommits(loadResult.config));
+  }
+
+  // 6. Changelog config check
+  if (loadResult) {
+    allChecks.push(checkChangelog(loadResult.config));
   }
 
   // Build result

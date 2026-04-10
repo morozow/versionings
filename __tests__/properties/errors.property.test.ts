@@ -25,7 +25,7 @@ describe('Property 9: Exit codes and error format', () => {
       fc.property(arbExitCode, arbMessage, arbDetails, (code, message, details) => {
         const err = new VersioningsError(code, message, details);
         expect(err.code).toBeGreaterThanOrEqual(0);
-        expect(err.code).toBeLessThanOrEqual(10);
+        expect(err.code).toBeLessThanOrEqual(11);
         expect(exitCodeValues).toContain(err.code);
       }),
       { numRuns: 100 }

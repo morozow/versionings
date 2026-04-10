@@ -9,8 +9,8 @@ import { VersioningsError, EXIT_CODES } from '../../errors';
 // ---------------------------------------------------------------------------
 
 describe('SUBCOMMANDS', () => {
-  it('contains all six expected subcommands', () => {
-    expect(SUBCOMMANDS).toEqual(['init', 'validate', 'plan', 'release', 'rollback', 'doctor']);
+  it('contains all seven expected subcommands', () => {
+    expect(SUBCOMMANDS).toEqual(['init', 'validate', 'plan', 'release', 'rollback', 'doctor', 'changelog']);
   });
 
   it('has no duplicates', () => {

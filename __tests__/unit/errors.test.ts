@@ -17,11 +17,12 @@ describe('EXIT_CODES', () => {
       NO_OPERATION: 8,
       USER_CANCELLED: 9,
       POLICY_VIOLATION: 10,
+      NO_CONVENTIONAL_COMMITS: 11,
     });
   });
 
-  test('has exactly 11 entries', () => {
-    expect(Object.keys(EXIT_CODES)).toHaveLength(11);
+  test('has exactly 12 entries', () => {
+    expect(Object.keys(EXIT_CODES)).toHaveLength(12);
   });
 
   test('existing codes 0–7 are unchanged', () => {

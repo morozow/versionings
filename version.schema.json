@@ -238,6 +238,74 @@
           "apiUrl"
         ]
       }
+    },
+    "conventionalCommits": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "types": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "enum": [
+              "major",
+              "minor",
+              "patch",
+              "none"
+            ]
+          }
+        },
+        "fallbackBump": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "patch",
+            "minor",
+            "major",
+            null
+          ],
+          "default": null
+        }
+      },
+      "additionalProperties": false
+    },
+    "changelog": {
+      "type": "object",
+      "properties": {
+        "template": {
+          "type": "string",
+          "minLength": 1
+        },
+        "groupTitles": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "excludeTypes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "includeNonConventional": {
+          "type": "boolean",
+          "default": false
+        },
+        "file": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

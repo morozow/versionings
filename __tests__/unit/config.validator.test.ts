@@ -849,3 +849,367 @@ describe('config.validator — git.branching section', () => {
     });
   });
 });
+
+
+describe('config.validator — conventionalCommits section', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'versionings-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function writeConfig(obj: Record<string, any>): string {
+    const filePath = path.join(tmpDir, 'version.json');
+    fs.writeFileSync(filePath, JSON.stringify(obj, null, 2), 'utf8');
+    return filePath;
+  }
+
+  const baseGit = { platform: 'github', url: 'https://github.com/org/repo.git' };
+
+  test('valid conventionalCommits with all fields passes', () => {
+    const filePath = writeConfig({
+      git: baseGit,
+      conventionalCommits: {
+        enabled: true,
+        types: { feat: 'minor', fix: 'patch', chore: 'none', breaking: 'major' },
+        fallbackBump: 'patch',
+      },
+    });
+    const config = loadAndValidateConfig(filePath);
+    expect(config.conventionalCommits).toBeDefined();
+    expect(config.conventionalCommits!.enabled).toBe(true);
+    expect(config.conventionalCommits!.types.feat).toBe('minor');
+    expect(config.conventionalCommits!.types.breaking).toBe('major');
+    expect(config.conventionalCommits!.fallbackBump).toBe('patch');
+  });
+
+  test('conventionalCommits.types — valid enum values (major, minor, patch, none) pass', () => {
+    const filePath = writeConfig({
+      git: baseGit,
+      conventionalCommits: {
+        types: { a: 'major', b: 'minor', c: 'patch', d: 'none' },
+      },
+    });
+    const config = loadAndValidateConfig(filePath);
+    expect(config.conventionalCommits!.types.a).toBe('major');
+    expect(config.conventionalCommits!.types.b).toBe('minor');
+    expect(config.conventionalCommits!.types.c).toBe('patch');
+    expect(config.conventionalCommits!.types.d).toBe('none');
+  });
+
+  test('conventionalCommits.types — invalid enum value fails', () => {
+    const filePath = writeConfig({
+      git: baseGit,
+      conventionalCommits: {
+        types: { feat: 'invalid-level' },
+      },
+    });
+    expect(() => loadAndValidateConfig(filePath)).toThrow(VersioningsError);
+    try {
+      loadAndValidateConfig(filePath);
+    } catch (err: any) {
+      expect(err.code).toBe(EXIT_CODES.CONFIG_ERROR);
+      expect(Array.isArray(err.details.validationErrors)).toBe(true);
+    }
+  });
+
+  test('conventionalCommits.types — partial map passes (not all types required)', () => {
+    const filePath = writeConfig({
+      git: baseGit,
+      conventionalCommits: {
+        types: { feat: 'minor' },
+      },
+    });
+    const config = loadAndValidateConfig(filePath);
+    // User-provided type merged with defaults
+    expect(config.conventionalCommits!.types.feat).toBe('minor');
+  });
+
+  test('conventionalCommits.fallbackBump — valid string values pass', () => {
+    for (const fb of ['patch', 'minor', 'major']) {
+      const filePath = writeConfig({
+        git: baseGit,
+        conventionalCommits: { fallbackBump: fb },
+      });
+      const config = loadAndValidateConfig(filePath);
+      expect(config.conventionalCommits!.fallbackBump).toBe(fb);
+    }
+  });
+
+  test('conventionalCommits.fallbackBump — null passes', () => {
+    const filePath = writeConfig({
+      git: baseGit,
+      conventionalCommits: { fallbackBump: null },
+    });
+    const config = loadAndValidateConfig(filePath);
+    expect(config.conventionalCommits!.fallbackBump).toBeNull();
+  });
+
+  test('conventionalCommits.fallbackBump — invalid value fails', () => {
+    const filePath = writeConfig({
+      git: baseGit,
+      conventionalCommits: { fallbackBump: 'prerelease' },
+    });
+    expect(() => loadAndValidateConfig(filePath)).toThrow(VersioningsError);
+    try {
+      loadAndValidateConfig(filePath);
+    } catch (err: any) {
+      expect(err.code).toBe(EXIT_CODES.CONFIG_ERROR);
+    }
+  });
+
+  test('conventionalCommits.enabled — boolean passes, non-boolean fails', () => {
+    const validPath = writeConfig({
+      git: baseGit,
+      conventionalCommits: { enabled: false },
+    });
+    const config = loadAndValidateConfig(validPath);
+    expect(config.conventionalCommits!.enabled).toBe(false);
+
+    const invalidPath = writeConfig({
+      git: baseGit,
+      conventionalCommits: { enabled: 'yes' },
+    });
+    expect(() => loadAndValidateConfig(invalidPath)).toThrow(VersioningsError);
+  });
+
+  test('conventionalCommits — unknown field rejected (additionalProperties: false)', () => {
+    const filePath = writeConfig({
+      git: baseGit,
+      conventionalCommits: { unknownField: 'value' },
+    });
+    expect(() => loadAndValidateConfig(filePath)).toThrow(VersioningsError);
+  });
+
+  test('conventionalCommits defaults applied when section is empty object', () => {
+    const filePath = writeConfig({
+      git: baseGit,
+      conventionalCommits: {},
+    });
+    const config = loadAndValidateConfig(filePath);
+    expect(config.conventionalCommits!.enabled).toBe(true);
+    expect(config.conventionalCommits!.fallbackBump).toBeNull();
+    expect(config.conventionalCommits!.types.feat).toBe('minor');
+    expect(config.conventionalCommits!.types.fix).toBe('patch');
+  });
+});
+
+
+describe('config.validator — changelog section', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'versionings-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function writeConfig(obj: Record<string, any>): string {
+    const filePath = path.join(tmpDir, 'version.json');
+    fs.writeFileSync(filePath, JSON.stringify(obj, null, 2), 'utf8');
+    return filePath;
+  }
+
+  const baseGit = { platform: 'github', url: 'https://github.com/org/repo.git' };
+
+  test('valid changelog with all fields passes', () => {
+    const filePath = writeConfig({
+      git: baseGit,
+      changelog: {
+        template: 'my-template.hbs',
+        groupTitles: { feat: 'New Features', fix: 'Fixes' },
+        excludeTypes: ['chore', 'docs'],
+        includeNonConventional: true,
+        file: 'CHANGELOG.md',
+      },
+    });
+    const config = loadAndValidateConfig(filePath);
+    expect(config.changelog).toBeDefined();
+    expect(config.changelog!.groupTitles.feat).toBe('New Features');
+    expect(config.changelog!.excludeTypes).toEqual(['chore', 'docs']);
+    expect(config.changelog!.includeNonConventional).toBe(true);
+    expect(config.changelog!.file).toBe('CHANGELOG.md');
+  });
+
+  test('changelog.excludeTypes — valid array of strings passes', () => {
+    const filePath = writeConfig({
+      git: baseGit,
+      changelog: { excludeTypes: ['chore', 'test', 'ci'] },
+    });
+    const config = loadAndValidateConfig(filePath);
+    expect(config.changelog!.excludeTypes).toEqual(['chore', 'test', 'ci']);
+  });
+
+  test('changelog.excludeTypes — empty array passes', () => {
+    const filePath = writeConfig({
+      git: baseGit,
+      changelog: { excludeTypes: [] },
+    });
+    const config = loadAndValidateConfig(filePath);
+    expect(config.changelog!.excludeTypes).toEqual([]);
+  });
+
+  test('changelog.excludeTypes — array with empty string fails (minLength 1)', () => {
+    const filePath = writeConfig({
+      git: baseGit,
+      changelog: { excludeTypes: ['chore', ''] },
+    });
+    expect(() => loadAndValidateConfig(filePath)).toThrow(VersioningsError);
+  });
+
+  test('changelog.excludeTypes — non-array value fails', () => {
+    const filePath = writeConfig({
+      git: baseGit,
+      changelog: { excludeTypes: 'chore' },
+    });
+    expect(() => loadAndValidateConfig(filePath)).toThrow(VersioningsError);
+  });
+
+  test('changelog.groupTitles — valid object with string values passes', () => {
+    const filePath = writeConfig({
+      git: baseGit,
+      changelog: { groupTitles: { feat: 'Features', fix: 'Bug Fixes', perf: 'Performance' } },
+    });
+    const config = loadAndValidateConfig(filePath);
+    expect(config.changelog!.groupTitles.feat).toBe('Features');
+    expect(config.changelog!.groupTitles.fix).toBe('Bug Fixes');
+  });
+
+  test('changelog.groupTitles — empty string value fails (minLength 1)', () => {
+    const filePath = writeConfig({
+      git: baseGit,
+      changelog: { groupTitles: { feat: '' } },
+    });
+    expect(() => loadAndValidateConfig(filePath)).toThrow(VersioningsError);
+  });
+
+  test('changelog.groupTitles — non-string value fails', () => {
+    const filePath = writeConfig({
+      git: baseGit,
+      changelog: { groupTitles: { feat: 123 } },
+    });
+    expect(() => loadAndValidateConfig(filePath)).toThrow(VersioningsError);
+  });
+
+  test('changelog.file — valid string passes', () => {
+    const filePath = writeConfig({
+      git: baseGit,
+      changelog: { file: 'CHANGELOG.md' },
+    });
+    const config = loadAndValidateConfig(filePath);
+    expect(config.changelog!.file).toBe('CHANGELOG.md');
+  });
+
+  test('changelog.file — empty string fails (minLength 1)', () => {
+    const filePath = writeConfig({
+      git: baseGit,
+      changelog: { file: '' },
+    });
+    expect(() => loadAndValidateConfig(filePath)).toThrow(VersioningsError);
+  });
+
+  test('changelog.file — string exceeding maxLength (512) fails', () => {
+    const filePath = writeConfig({
+      git: baseGit,
+      changelog: { file: 'a'.repeat(513) },
+    });
+    expect(() => loadAndValidateConfig(filePath)).toThrow(VersioningsError);
+  });
+
+  test('changelog.includeNonConventional — boolean passes, non-boolean fails', () => {
+    const validPath = writeConfig({
+      git: baseGit,
+      changelog: { includeNonConventional: true },
+    });
+    const config = loadAndValidateConfig(validPath);
+    expect(config.changelog!.includeNonConventional).toBe(true);
+
+    const invalidPath = writeConfig({
+      git: baseGit,
+      changelog: { includeNonConventional: 'yes' },
+    });
+    expect(() => loadAndValidateConfig(invalidPath)).toThrow(VersioningsError);
+  });
+
+  test('changelog.template — valid non-empty string passes', () => {
+    const filePath = writeConfig({
+      git: baseGit,
+      changelog: { template: 'custom-template.hbs' },
+    });
+    const config = loadAndValidateConfig(filePath);
+    expect(config.changelog!.template).toBe('custom-template.hbs');
+  });
+
+  test('changelog.template — empty string fails (minLength 1)', () => {
+    const filePath = writeConfig({
+      git: baseGit,
+      changelog: { template: '' },
+    });
+    expect(() => loadAndValidateConfig(filePath)).toThrow(VersioningsError);
+  });
+
+  test('changelog — unknown field rejected (additionalProperties: false)', () => {
+    const filePath = writeConfig({
+      git: baseGit,
+      changelog: { unknownField: 'value' },
+    });
+    expect(() => loadAndValidateConfig(filePath)).toThrow(VersioningsError);
+  });
+
+  test('changelog defaults applied when section is empty object', () => {
+    const filePath = writeConfig({
+      git: baseGit,
+      changelog: {},
+    });
+    const config = loadAndValidateConfig(filePath);
+    expect(config.changelog!.includeNonConventional).toBe(false);
+    expect(config.changelog!.excludeTypes).toEqual([]);
+    expect(config.changelog!.groupTitles.feat).toBe('Features');
+    expect(config.changelog!.groupTitles.fix).toBe('Bug Fixes');
+    expect(config.changelog!.groupTitles.breaking).toBe('BREAKING CHANGES');
+  });
+
+  test('backward compatibility — old config without conventionalCommits and changelog passes', () => {
+    const filePath = writeConfig({
+      git: baseGit,
+    });
+    const config = loadAndValidateConfig(filePath);
+    expect(config.git.platform).toBe('github');
+    // Defaults should be applied for new sections
+    expect(config.conventionalCommits).toBeDefined();
+    expect(config.conventionalCommits!.enabled).toBe(true);
+    expect(config.conventionalCommits!.fallbackBump).toBeNull();
+    expect(config.changelog).toBeDefined();
+    expect(config.changelog!.excludeTypes).toEqual([]);
+    expect(config.changelog!.includeNonConventional).toBe(false);
+  });
+
+  test('config with both conventionalCommits and changelog sections passes', () => {
+    const filePath = writeConfig({
+      git: baseGit,
+      conventionalCommits: {
+        enabled: true,
+        types: { feat: 'minor', fix: 'patch' },
+        fallbackBump: 'patch',
+      },
+      changelog: {
+        groupTitles: { feat: 'New', fix: 'Fixed' },
+        excludeTypes: ['chore'],
+        includeNonConventional: false,
+        file: 'CHANGES.md',
+      },
+    });
+    const config = loadAndValidateConfig(filePath);
+    expect(config.conventionalCommits!.enabled).toBe(true);
+    expect(config.conventionalCommits!.fallbackBump).toBe('patch');
+    expect(config.changelog!.file).toBe('CHANGES.md');
+    expect(config.changelog!.groupTitles.feat).toBe('New');
+    expect(config.changelog!.excludeTypes).toEqual(['chore']);
+  });
+});

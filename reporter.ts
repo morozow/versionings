@@ -10,6 +10,14 @@ export interface ReporterOpts {
   json: boolean;
 }
 
+export interface AutoBumpInfo {
+  detectedBump: string;
+  totalCommits: number;
+  breakingChanges: number;
+  commitsByType: Record<string, number>;
+  range: { from: string; to: string };
+}
+
 export interface PipelineResult {
   success: boolean;
   version: string;
@@ -22,6 +30,7 @@ export interface PipelineResult {
   pullRequest?: PR_Result;
   strategy?: string;
   policyCheck?: { warnings: string[]; errors: string[]; protectionInfo: any };
+  autoBump?: AutoBumpInfo;
 }
 
 export interface DryRunPlan {
@@ -44,6 +53,8 @@ export interface DryRunPlan {
   };
   strategy?: string;
   policyCheck?: { warnings: string[]; errors: string[]; protectionInfo: any };
+  autoBump?: AutoBumpInfo;
+  changelogPreview?: string;
 }
 
 export interface ValidateResult {
@@ -98,6 +109,20 @@ function isDraftPr(pr: PR_Result): boolean {
   return pr.warnings?.some(w => w.toLowerCase().includes('draft')) ?? false;
 }
 
+function formatAutoBumpLines(autoBump: AutoBumpInfo): string[] {
+  const lines: string[] = [];
+  lines.push(`Auto-detected bump: ${autoBump.detectedBump} (${autoBump.totalCommits} commits analyzed, ${autoBump.breakingChanges} breaking changes)`);
+  if (autoBump.commitsByType && Object.keys(autoBump.commitsByType).length > 0) {
+    const types = Object.keys(autoBump.commitsByType).sort();
+    const parts = types.map(t => `${t}: ${autoBump.commitsByType[t]}`);
+    lines.push(`  ${parts.join(', ')}`);
+  }
+  if (autoBump.range) {
+    lines.push(`  Range: ${autoBump.range.from}..${autoBump.range.to}`);
+  }
+  return lines;
+}
+
 export function createReporter(opts: ReporterOpts): Reporter {
   const jsonMode = opts.json;
 
@@ -128,6 +153,9 @@ export function createReporter(opts: ReporterOpts): Reporter {
       if (result.policyCheck !== undefined) {
         obj.policyCheck = result.policyCheck;
       }
+      if (result.autoBump !== undefined) {
+        obj.autoBump = result.autoBump;
+      }
       return JSON.stringify(obj) + '\n';
     }
 
@@ -139,6 +167,9 @@ export function createReporter(opts: ReporterOpts): Reporter {
     }
     lines.push(`Branch: ${result.branch}`);
     lines.push(`Semantic version: ${result.semver}`);
+    if (result.autoBump) {
+      lines.push(...formatAutoBumpLines(result.autoBump));
+    }
 
     if (result.pullRequest) {
       const pr = result.pullRequest;
@@ -191,6 +222,18 @@ export function createReporter(opts: ReporterOpts): Reporter {
         lines.push(`  Recommendation: ${error.details.recommendation}`);
       }
     }
+    if (error.code === EXIT_CODES.NO_CONVENTIONAL_COMMITS && error.details) {
+      if (error.details.range) {
+        const range = error.details.range;
+        lines.push(`  Range: ${range.from || 'unknown'}..${range.to || 'unknown'}`);
+      }
+      if (error.details.totalCommits !== undefined) {
+        lines.push(`  Commits analyzed: ${error.details.totalCommits}`);
+      }
+      if (error.details.recommendation) {
+        lines.push(`  Recommendation: ${error.details.recommendation}`);
+      }
+    }
     return lines.join('\n');
   }
 
@@ -204,6 +247,9 @@ export function createReporter(opts: ReporterOpts): Reporter {
     lines.push(`Current version: ${plan.currentVersion}`);
     lines.push(`Next version: ${plan.nextVersion}`);
     lines.push(`Semantic version: ${plan.semver}`);
+    if (plan.autoBump) {
+      lines.push(...formatAutoBumpLines(plan.autoBump));
+    }
     if (plan.strategy !== undefined) {
       lines.push(`Strategy: ${plan.strategy}`);
     }
@@ -237,6 +283,11 @@ export function createReporter(opts: ReporterOpts): Reporter {
       for (const warning of plan.policyCheck.warnings) {
         lines.push(`${ANSI_FG_YELLOW}⚠ ${warning}${ANSI_FG_NC}`);
       }
+    }
+    if (plan.changelogPreview && plan.changelogPreview.trim()) {
+      lines.push('');
+      lines.push('Changelog preview:');
+      lines.push(plan.changelogPreview);
     }
     return lines.join('\n');
   }

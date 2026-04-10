@@ -589,3 +589,222 @@ describe('reporter — strategy and policyCheck output', () => {
     expect(output).toContain('exit code 10');
   });
 });
+
+
+// --- autoBump and NO_CONVENTIONAL_COMMITS output tests (Task 13.1) ---
+
+import type { AutoBumpInfo } from '../../reporter';
+
+const sampleAutoBump: AutoBumpInfo = {
+  detectedBump: 'minor',
+  totalCommits: 12,
+  breakingChanges: 0,
+  commitsByType: { feat: 5, fix: 3, refactor: 2, chore: 2 },
+  range: { from: 'v1.2.0', to: 'HEAD' },
+};
+
+describe('reporter — autoBump in reportSuccess', () => {
+  test('JSON includes autoBump field when present', () => {
+    const reporter = createReporter({ json: true });
+    const result: PipelineResult = {
+      ...successResult,
+      semver: 'minor',
+      autoBump: sampleAutoBump,
+    };
+    const output = reporter.reportSuccess(result);
+    const parsed = JSON.parse(output);
+    expect(parsed.autoBump).toBeDefined();
+    expect(parsed.autoBump.detectedBump).toBe('minor');
+    expect(parsed.autoBump.totalCommits).toBe(12);
+    expect(parsed.autoBump.breakingChanges).toBe(0);
+    expect(parsed.autoBump.commitsByType).toEqual({ feat: 5, fix: 3, refactor: 2, chore: 2 });
+    expect(parsed.autoBump.range).toEqual({ from: 'v1.2.0', to: 'HEAD' });
+  });
+
+  test('JSON omits autoBump field when absent (backward compatibility)', () => {
+    const reporter = createReporter({ json: true });
+    const output = reporter.reportSuccess(successResult);
+    const parsed = JSON.parse(output);
+    expect(parsed.autoBump).toBeUndefined();
+  });
+
+  test('human-readable includes auto-detected bump line', () => {
+    const reporter = createReporter({ json: false });
+    const result: PipelineResult = {
+      ...successResult,
+      semver: 'minor',
+      autoBump: sampleAutoBump,
+    };
+    const output = reporter.reportSuccess(result);
+    expect(output).toContain('Auto-detected bump: minor (12 commits analyzed, 0 breaking changes)');
+  });
+
+  test('human-readable includes commitsByType breakdown', () => {
+    const reporter = createReporter({ json: false });
+    const result: PipelineResult = {
+      ...successResult,
+      semver: 'minor',
+      autoBump: sampleAutoBump,
+    };
+    const output = reporter.reportSuccess(result);
+    expect(output).toContain('chore: 2');
+    expect(output).toContain('feat: 5');
+    expect(output).toContain('fix: 3');
+    expect(output).toContain('refactor: 2');
+  });
+
+  test('human-readable includes range', () => {
+    const reporter = createReporter({ json: false });
+    const result: PipelineResult = {
+      ...successResult,
+      semver: 'minor',
+      autoBump: sampleAutoBump,
+    };
+    const output = reporter.reportSuccess(result);
+    expect(output).toContain('Range: v1.2.0..HEAD');
+  });
+
+  test('human-readable omits auto-bump lines when autoBump absent', () => {
+    const reporter = createReporter({ json: false });
+    const output = reporter.reportSuccess(successResult);
+    expect(output).not.toContain('Auto-detected bump');
+    expect(output).not.toContain('Range:');
+  });
+});
+
+describe('reporter — autoBump and changelogPreview in reportDryRun', () => {
+  test('JSON includes autoBump when present in plan', () => {
+    const reporter = createReporter({ json: true });
+    const plan: DryRunPlan = {
+      ...dryRunPlan,
+      semver: 'minor',
+      autoBump: sampleAutoBump,
+    };
+    const output = reporter.reportDryRun(plan);
+    const parsed = JSON.parse(output);
+    expect(parsed.autoBump).toBeDefined();
+    expect(parsed.autoBump.detectedBump).toBe('minor');
+    expect(parsed.autoBump.totalCommits).toBe(12);
+  });
+
+  test('JSON includes changelogPreview when present in plan', () => {
+    const reporter = createReporter({ json: true });
+    const plan: DryRunPlan = {
+      ...dryRunPlan,
+      changelogPreview: '## [1.3.0] - 2024-01-15\n\n### Features\n\n- add login',
+    };
+    const output = reporter.reportDryRun(plan);
+    const parsed = JSON.parse(output);
+    expect(parsed.changelogPreview).toContain('## [1.3.0]');
+  });
+
+  test('human-readable includes auto-detected bump line in dry-run', () => {
+    const reporter = createReporter({ json: false });
+    const plan: DryRunPlan = {
+      ...dryRunPlan,
+      semver: 'minor',
+      autoBump: sampleAutoBump,
+    };
+    const output = reporter.reportDryRun(plan);
+    expect(output).toContain('Auto-detected bump: minor (12 commits analyzed, 0 breaking changes)');
+    expect(output).toContain('Range: v1.2.0..HEAD');
+  });
+
+  test('human-readable includes changelog preview section', () => {
+    const reporter = createReporter({ json: false });
+    const plan: DryRunPlan = {
+      ...dryRunPlan,
+      changelogPreview: '## [1.3.0] - 2024-01-15\n\n### Features\n\n- add login',
+    };
+    const output = reporter.reportDryRun(plan);
+    expect(output).toContain('Changelog preview:');
+    expect(output).toContain('## [1.3.0] - 2024-01-15');
+    expect(output).toContain('- add login');
+  });
+
+  test('human-readable omits changelog preview when empty string', () => {
+    const reporter = createReporter({ json: false });
+    const plan: DryRunPlan = {
+      ...dryRunPlan,
+      changelogPreview: '   ',
+    };
+    const output = reporter.reportDryRun(plan);
+    expect(output).not.toContain('Changelog preview:');
+  });
+
+  test('human-readable omits auto-bump and changelog when absent', () => {
+    const reporter = createReporter({ json: false });
+    const output = reporter.reportDryRun(dryRunPlan);
+    expect(output).not.toContain('Auto-detected bump');
+    expect(output).not.toContain('Changelog preview');
+  });
+});
+
+describe('reporter — NO_CONVENTIONAL_COMMITS error formatting', () => {
+  test('JSON error includes NO_CONVENTIONAL_COMMITS code and details', () => {
+    const reporter = createReporter({ json: true });
+    const err = new VersioningsError(
+      EXIT_CODES.NO_CONVENTIONAL_COMMITS,
+      'No conventional commits found in range',
+      {
+        range: { from: 'v1.2.0', to: 'HEAD' },
+        totalCommits: 5,
+        recommendation: 'Use --semver=patch|minor|major or configure conventionalCommits.fallbackBump',
+      },
+    );
+    const output = reporter.reportError(err);
+    const parsed = JSON.parse(output);
+    expect(parsed.success).toBe(false);
+    expect(parsed.exitCode).toBe(11);
+    expect(parsed.error.code).toBe('NO_CONVENTIONAL_COMMITS');
+    expect(parsed.error.details.range).toEqual({ from: 'v1.2.0', to: 'HEAD' });
+    expect(parsed.error.details.totalCommits).toBe(5);
+    expect(parsed.error.details.recommendation).toContain('--semver=patch');
+  });
+
+  test('human-readable error includes range, commit count, and recommendation', () => {
+    const reporter = createReporter({ json: false });
+    const err = new VersioningsError(
+      EXIT_CODES.NO_CONVENTIONAL_COMMITS,
+      'No conventional commits found in range',
+      {
+        range: { from: 'v1.2.0', to: 'HEAD' },
+        totalCommits: 5,
+        recommendation: 'Use --semver=patch|minor|major or configure conventionalCommits.fallbackBump',
+      },
+    );
+    const output = reporter.reportError(err);
+    expect(output).toContain('NO_CONVENTIONAL_COMMITS');
+    expect(output).toContain('exit code 11');
+    expect(output).toContain('Range: v1.2.0..HEAD');
+    expect(output).toContain('Commits analyzed: 5');
+    expect(output).toContain('Recommendation: Use --semver=patch');
+  });
+
+  test('human-readable error handles partial details gracefully', () => {
+    const reporter = createReporter({ json: false });
+    const err = new VersioningsError(
+      EXIT_CODES.NO_CONVENTIONAL_COMMITS,
+      'No conventional commits found',
+      { totalCommits: 3 },
+    );
+    const output = reporter.reportError(err);
+    expect(output).toContain('NO_CONVENTIONAL_COMMITS');
+    expect(output).toContain('Commits analyzed: 3');
+    expect(output).not.toContain('Range:');
+    expect(output).not.toContain('Recommendation:');
+  });
+
+  test('human-readable error handles missing details gracefully', () => {
+    const reporter = createReporter({ json: false });
+    const err = new VersioningsError(
+      EXIT_CODES.NO_CONVENTIONAL_COMMITS,
+      'No conventional commits found',
+    );
+    const output = reporter.reportError(err);
+    expect(output).toContain('NO_CONVENTIONAL_COMMITS');
+    expect(output).toContain('exit code 11');
+    expect(output).not.toContain('Range:');
+    expect(output).not.toContain('Commits analyzed:');
+  });
+});

@@ -120,16 +120,35 @@ function drainStdout(stdout: PassThrough): string {
 
 describe('doctor.command — all checks pass', () => {
   test('returns all checks with pass status when environment is healthy', async () => {
-    const deps = makeDeps();
+    const executor = createMockExecutor({
+      'git log -10 --format=%s': 'feat: add feature\nfix: bug fix\nchore: cleanup',
+    });
+    const configLoader = createMockConfigLoader(
+      makeConfigLoadResult({
+        config: {
+          git: {
+            platform: 'github',
+            url: 'https://github.com/org/repo',
+            pr: { target: 'main' },
+            remote: 'origin',
+          },
+          conventionalCommits: { enabled: true },
+          changelog: { file: 'CHANGELOG.md' },
+        } as any,
+      }),
+    );
+    const deps = makeDeps({ executor, configLoader });
 
     const checks = await runDoctorCommand({ json: false }, deps);
 
-    expect(checks).toHaveLength(5);
+    expect(checks).toHaveLength(7);
     expect(checks.find((c) => c.name === 'node_version')?.status).toBe('pass');
     expect(checks.find((c) => c.name === 'git_version')?.status).toBe('pass');
     expect(checks.find((c) => c.name === 'config')?.status).toBe('pass');
     expect(checks.find((c) => c.name === 'git_remote')?.status).toBe('pass');
     expect(checks.find((c) => c.name === 'package_json')?.status).toBe('pass');
+    expect(checks.find((c) => c.name === 'conventional_commits')?.status).toBe('pass');
+    expect(checks.find((c) => c.name === 'cc_config')?.status).toBe('pass');
   });
 
   test('node_version check includes found and expected values', async () => {
@@ -545,5 +564,173 @@ describe('doctor.command — branching strategy check', () => {
 
     const bsCheck = checks.find((c) => c.name === 'branching_strategy');
     expect(bsCheck).toBeUndefined();
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// Conventional Commits history check tests
+// ---------------------------------------------------------------------------
+
+describe('doctor.command — conventional_commits check', () => {
+  test('returns pass when some commits match CC format', async () => {
+    const executor = createMockExecutor({
+      'git log -10 --format=%s': 'feat: add feature\nrandom commit\nfix: bug fix',
+    });
+    const deps = makeDeps({ executor });
+
+    const checks = await runDoctorCommand({ json: false }, deps);
+
+    const ccCheck = checks.find((c) => c.name === 'conventional_commits')!;
+    expect(ccCheck.status).toBe('pass');
+    expect(ccCheck.found).toContain('2/3');
+  });
+
+  test('returns warn when no commits match CC format', async () => {
+    const executor = createMockExecutor({
+      'git log -10 --format=%s': 'random commit\nanother commit\nno format here',
+    });
+    const deps = makeDeps({ executor });
+
+    const checks = await runDoctorCommand({ json: false }, deps);
+
+    const ccCheck = checks.find((c) => c.name === 'conventional_commits')!;
+    expect(ccCheck.status).toBe('warn');
+    expect(ccCheck.found).toContain('0/3');
+    expect(ccCheck.expected).toContain('Conventional Commits');
+  });
+
+  test('returns warn when git log returns empty output', async () => {
+    const executor = createMockExecutor({
+      'git log -10 --format=%s': '',
+    });
+    const deps = makeDeps({ executor });
+
+    const checks = await runDoctorCommand({ json: false }, deps);
+
+    const ccCheck = checks.find((c) => c.name === 'conventional_commits')!;
+    expect(ccCheck.status).toBe('warn');
+    expect(ccCheck.found).toContain('no commits found');
+  });
+
+  test('returns warn when git log command fails', async () => {
+    const executor = createMockExecutor({
+      'git log -10 --format=%s': new VersioningsError(
+        EXIT_CODES.COMMAND_FAILED, 'not a git repo', {},
+      ) as any,
+    });
+    const deps = makeDeps({ executor });
+
+    const checks = await runDoctorCommand({ json: false }, deps);
+
+    const ccCheck = checks.find((c) => c.name === 'conventional_commits')!;
+    expect(ccCheck.status).toBe('warn');
+    expect(ccCheck.found).toContain('unable to read commit history');
+  });
+
+  test('returns pass when all commits match CC format', async () => {
+    const executor = createMockExecutor({
+      'git log -10 --format=%s': 'feat: one\nfix: two\nchore: three',
+    });
+    const deps = makeDeps({ executor });
+
+    const checks = await runDoctorCommand({ json: false }, deps);
+
+    const ccCheck = checks.find((c) => c.name === 'conventional_commits')!;
+    expect(ccCheck.status).toBe('pass');
+    expect(ccCheck.found).toContain('3/3');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CC config check tests
+// ---------------------------------------------------------------------------
+
+describe('doctor.command — cc_config check', () => {
+  test('returns pass when conventionalCommits section is configured', async () => {
+    const configLoader = createMockConfigLoader(
+      makeConfigLoadResult({
+        config: {
+          git: { platform: 'github', url: 'https://github.com/org/repo' },
+          conventionalCommits: { enabled: true, fallbackBump: 'patch' },
+        } as any,
+      }),
+    );
+    const deps = makeDeps({ configLoader });
+
+    const checks = await runDoctorCommand({ json: false }, deps);
+
+    const ccCfgCheck = checks.find((c) => c.name === 'cc_config')!;
+    expect(ccCfgCheck.status).toBe('pass');
+    expect(ccCfgCheck.found).toContain('conventionalCommits: enabled');
+    expect(ccCfgCheck.found).toContain('fallbackBump: patch');
+  });
+
+  test('returns pass when changelog section is configured', async () => {
+    const configLoader = createMockConfigLoader(
+      makeConfigLoadResult({
+        config: {
+          git: { platform: 'github', url: 'https://github.com/org/repo' },
+          changelog: { file: 'CHANGELOG.md', excludeTypes: ['chore', 'docs'] },
+        } as any,
+      }),
+    );
+    const deps = makeDeps({ configLoader });
+
+    const checks = await runDoctorCommand({ json: false }, deps);
+
+    const ccCfgCheck = checks.find((c) => c.name === 'cc_config')!;
+    expect(ccCfgCheck.status).toBe('pass');
+    expect(ccCfgCheck.found).toContain('changelog.file: CHANGELOG.md');
+    expect(ccCfgCheck.found).toContain('changelog.excludeTypes: chore, docs');
+  });
+
+  test('returns warn when neither conventionalCommits nor changelog is configured', async () => {
+    const configLoader = createMockConfigLoader(
+      makeConfigLoadResult({
+        config: {
+          git: { platform: 'github', url: 'https://github.com/org/repo' },
+        } as any,
+      }),
+    );
+    const deps = makeDeps({ configLoader });
+
+    const checks = await runDoctorCommand({ json: false }, deps);
+
+    const ccCfgCheck = checks.find((c) => c.name === 'cc_config')!;
+    expect(ccCfgCheck.status).toBe('warn');
+    expect(ccCfgCheck.found).toContain('not configured');
+    expect(ccCfgCheck.expected).toContain('conventionalCommits');
+  });
+
+  test('reports conventionalCommits disabled when enabled is false', async () => {
+    const configLoader = createMockConfigLoader(
+      makeConfigLoadResult({
+        config: {
+          git: { platform: 'github', url: 'https://github.com/org/repo' },
+          conventionalCommits: { enabled: false },
+        } as any,
+      }),
+    );
+    const deps = makeDeps({ configLoader });
+
+    const checks = await runDoctorCommand({ json: false }, deps);
+
+    const ccCfgCheck = checks.find((c) => c.name === 'cc_config')!;
+    expect(ccCfgCheck.status).toBe('pass');
+    expect(ccCfgCheck.found).toContain('conventionalCommits: disabled');
+  });
+
+  test('skips cc_config check when config load fails', async () => {
+    const configLoader = createMockConfigLoader(
+      undefined,
+      new VersioningsError(EXIT_CODES.CONFIG_ERROR, 'bad config', {}),
+    );
+    const deps = makeDeps({ configLoader });
+
+    const checks = await runDoctorCommand({ json: false }, deps);
+
+    const ccCfgCheck = checks.find((c) => c.name === 'cc_config');
+    expect(ccCfgCheck).toBeUndefined();
   });
 });

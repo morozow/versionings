@@ -2,12 +2,13 @@
 // Copyright (c) 2018-present Raman Marozau
 
 import { VersioningsError, EXIT_CODES } from './errors';
+import { AVAILABLE_SEMVERS } from './version.utils';
 
 // ---------------------------------------------------------------------------
 // Available subcommands (for help and error messages)
 // ---------------------------------------------------------------------------
 
-export const SUBCOMMANDS = ['init', 'validate', 'plan', 'release', 'rollback', 'doctor'];
+export const SUBCOMMANDS = ['init', 'validate', 'plan', 'release', 'rollback', 'doctor', 'changelog'];
 
 // ---------------------------------------------------------------------------
 // Argv preprocessing: legacy backward compatibility
@@ -41,16 +42,18 @@ export function preprocessArgv(argv: string[]): string[] {
 
 export const EXIT_CODES_EPILOG = [
   'Exit Codes:',
-  '  0  SUCCESS             Successful completion',
-  '  1  CONFIG_ERROR        Configuration error',
-  '  2  DIRTY_TREE          Uncommitted changes in working tree',
-  '  3  INVALID_ARGS        Invalid CLI arguments',
-  '  4  ARTIFACT_CONFLICT   Branch or tag already exists',
-  '  5  COMMAND_FAILED      Git/npm command failed',
-  '  6  NETWORK_ERROR       Network error',
-  '  7  INCOMPLETE_ROLLBACK Rollback could not complete all steps',
-  '  8  NO_OPERATION        Nothing to rollback',
-  '  9  USER_CANCELLED      User cancelled the operation',
+  '  0  SUCCESS                  Successful completion',
+  '  1  CONFIG_ERROR             Configuration error',
+  '  2  DIRTY_TREE               Uncommitted changes in working tree',
+  '  3  INVALID_ARGS             Invalid CLI arguments',
+  '  4  ARTIFACT_CONFLICT        Branch or tag already exists',
+  '  5  COMMAND_FAILED           Git/npm command failed',
+  '  6  NETWORK_ERROR            Network error',
+  '  7  INCOMPLETE_ROLLBACK      Rollback could not complete all steps',
+  '  8  NO_OPERATION             Nothing to rollback',
+  '  9  USER_CANCELLED           User cancelled the operation',
+  ' 10  POLICY_VIOLATION         Branch protection policy violated',
+  ' 11  NO_CONVENTIONAL_COMMITS  No conventional commits found for auto-bump',
 ].join('\n');
 
 // ---------------------------------------------------------------------------
@@ -135,8 +138,9 @@ export function buildCli(argv: string[]) {
       return y
         .option('semver', {
           type: 'string',
+          choices: AVAILABLE_SEMVERS,
           demandOption: true,
-          describe: 'Semantic version type (patch, minor, major, ...)',
+          describe: 'Semantic version type (patch, minor, major, auto, ...)',
         })
         .option('branch', {
           type: 'string',
@@ -172,8 +176,9 @@ export function buildCli(argv: string[]) {
       return y
         .option('semver', {
           type: 'string',
+          choices: AVAILABLE_SEMVERS,
           demandOption: true,
-          describe: 'Semantic version type (patch, minor, major, ...)',
+          describe: 'Semantic version type (patch, minor, major, auto, ...)',
         })
         .option('branch', {
           type: 'string',
@@ -227,6 +232,34 @@ export function buildCli(argv: string[]) {
       return y
         .example('$0 doctor', 'Run all diagnostics')
         .example('$0 doctor --json', 'JSON diagnostics for CI');
+    })
+
+    // ---- Subcommand: changelog ----
+    .command('changelog', 'Generate changelog from commit history', (y: any) => {
+      return y
+        .option('from', {
+          type: 'string',
+          describe: 'Start tag or commit SHA',
+        })
+        .option('to', {
+          type: 'string',
+          default: 'HEAD',
+          describe: 'End tag or commit SHA',
+        })
+        .option('output', {
+          type: 'string',
+          describe: 'Write changelog to file',
+        })
+        .option('format', {
+          type: 'string',
+          choices: ['markdown', 'plain'],
+          default: 'markdown',
+          describe: 'Output format for changelog',
+        })
+        .example('$0 changelog', 'Generate changelog to stdout')
+        .example('$0 changelog --output=CHANGELOG.md', 'Write to file')
+        .example('$0 changelog --from=v1.0.0 --to=v2.0.0', 'Specific range')
+        .example('$0 changelog --json', 'Structured JSON output');
     })
 
     .strictCommands()

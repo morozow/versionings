@@ -61,6 +61,22 @@ export interface BranchingConfig {
   developBranch: string;
 }
 
+export type BumpLevel = 'major' | 'minor' | 'patch' | 'none';
+
+export interface ConventionalCommitsConfig {
+  enabled: boolean;
+  types: Record<string, BumpLevel>;
+  fallbackBump: 'patch' | 'minor' | 'major' | null;
+}
+
+export interface ChangelogConfig {
+  template?: string;
+  groupTitles: Record<string, string>;
+  excludeTypes: string[];
+  includeNonConventional: boolean;
+  file?: string;
+}
+
 interface GitConfig {
   platform: string | undefined;
   url: string | undefined;
@@ -113,7 +129,31 @@ export interface VersioningsConfig {
   common: {
     messages: CommonMessages;
   };
+  conventionalCommits?: ConventionalCommitsConfig;
+  changelog?: ChangelogConfig;
 }
+
+const DEFAULT_CONVENTIONAL_COMMITS_TYPES: Record<string, BumpLevel> = {
+  feat: 'minor',
+  fix: 'patch',
+  perf: 'patch',
+  revert: 'patch',
+  chore: 'none',
+  docs: 'none',
+  style: 'none',
+  refactor: 'none',
+  test: 'none',
+  build: 'none',
+  ci: 'none',
+};
+
+const DEFAULT_GROUP_TITLES: Record<string, string> = {
+  breaking: 'BREAKING CHANGES',
+  feat: 'Features',
+  fix: 'Bug Fixes',
+  perf: 'Performance Improvements',
+  revert: 'Reverts',
+};
 
 const defaultConfig: VersioningsConfig = {
   git: {
@@ -147,6 +187,16 @@ const defaultConfig: VersioningsConfig = {
         },
       },
     },
+  },
+  conventionalCommits: {
+    enabled: true,
+    types: { ...DEFAULT_CONVENTIONAL_COMMITS_TYPES },
+    fallbackBump: null,
+  },
+  changelog: {
+    groupTitles: { ...DEFAULT_GROUP_TITLES },
+    excludeTypes: [],
+    includeNonConventional: false,
   },
   package: {
     semver: {
@@ -254,6 +304,8 @@ export function loadAndValidateConfig(configPath: string): VersioningsConfig {
   const authConfig = gitConfig.auth || {};
   const apiConfig = gitConfig.api || {};
   const branchingConfig = gitConfig.branching || {};
+  const ccConfig = versionConfig.conventionalCommits || {};
+  const clConfig = versionConfig.changelog || {};
 
   const config: VersioningsConfig = {
     ...defaultConfig,
@@ -283,6 +335,24 @@ export function loadAndValidateConfig(configPath: string): VersioningsConfig {
       ...(Object.keys(apiConfig).length > 0 ? { api: apiConfig } : {}),
       ...(gitConfig.project !== undefined ? { project: gitConfig.project } : {}),
       ...(gitConfig.repo !== undefined ? { repo: gitConfig.repo } : {}),
+    },
+    conventionalCommits: {
+      enabled: ccConfig.enabled !== undefined ? ccConfig.enabled : defaultConfig.conventionalCommits!.enabled,
+      types: {
+        ...defaultConfig.conventionalCommits!.types,
+        ...(ccConfig.types || {}),
+      },
+      fallbackBump: ccConfig.fallbackBump !== undefined ? ccConfig.fallbackBump : defaultConfig.conventionalCommits!.fallbackBump,
+    },
+    changelog: {
+      groupTitles: {
+        ...defaultConfig.changelog!.groupTitles,
+        ...(clConfig.groupTitles || {}),
+      },
+      excludeTypes: clConfig.excludeTypes !== undefined ? clConfig.excludeTypes : defaultConfig.changelog!.excludeTypes,
+      includeNonConventional: clConfig.includeNonConventional !== undefined ? clConfig.includeNonConventional : defaultConfig.changelog!.includeNonConventional,
+      ...(clConfig.template !== undefined ? { template: clConfig.template } : {}),
+      ...(clConfig.file !== undefined ? { file: clConfig.file } : {}),
     },
   };
 
@@ -522,4 +592,4 @@ export function validateWithProvenance(
   return { valid: true, warnings };
 }
 
-export { schema };
+export { schema, DEFAULT_CONVENTIONAL_COMMITS_TYPES, DEFAULT_GROUP_TITLES };

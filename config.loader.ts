@@ -60,6 +60,25 @@ const ENV_VAR_MAP: Record<string, string> = {
   VERSIONINGS_GIT_BRANCHING_STRATEGY: 'git.branching.strategy',
   VERSIONINGS_GIT_BRANCHING_MAIN_BRANCH: 'git.branching.mainBranch',
   VERSIONINGS_GIT_BRANCHING_DEVELOP_BRANCH: 'git.branching.developBranch',
+  VERSIONINGS_CONVENTIONAL_COMMITS_ENABLED: 'conventionalCommits.enabled',
+  VERSIONINGS_CONVENTIONAL_COMMITS_FALLBACK_BUMP: 'conventionalCommits.fallbackBump',
+};
+
+/**
+ * Type coercion for env var values that need non-string types.
+ * Returns the coerced value, or the original string if no coercion is needed.
+ */
+const ENV_VAR_COERCE: Record<string, (raw: string) => any> = {
+  VERSIONINGS_CONVENTIONAL_COMMITS_ENABLED: (raw: string) => {
+    const lower = raw.toLowerCase();
+    if (lower === 'true') return true;
+    if (lower === 'false') return false;
+    return raw; // let schema validation catch invalid values
+  },
+  VERSIONINGS_CONVENTIONAL_COMMITS_FALLBACK_BUMP: (raw: string) => {
+    if (raw === 'null') return null;
+    return raw;
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -258,7 +277,8 @@ function loadEnvVars(env: Record<string, string | undefined>): ConfigSource | nu
   for (const [envName, configPath] of Object.entries(ENV_VAR_MAP)) {
     const value = env[envName];
     if (value !== undefined && value !== '') {
-      setByPath(data, configPath, value);
+      const coerce = ENV_VAR_COERCE[envName];
+      setByPath(data, configPath, coerce ? coerce(value) : value);
       hasAny = true;
     }
   }

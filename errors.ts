@@ -13,6 +13,7 @@ export interface ExitCodes {
   readonly NO_OPERATION: 8;
   readonly USER_CANCELLED: 9;
   readonly POLICY_VIOLATION: 10;
+  readonly NO_CONVENTIONAL_COMMITS: 11;
 }
 
 export const EXIT_CODES: ExitCodes = Object.freeze({
@@ -27,6 +28,7 @@ export const EXIT_CODES: ExitCodes = Object.freeze({
   NO_OPERATION: 8 as const,
   USER_CANCELLED: 9 as const,
   POLICY_VIOLATION: 10 as const,
+  NO_CONVENTIONAL_COMMITS: 11 as const,
 });
 
 export class VersioningsError extends Error {
