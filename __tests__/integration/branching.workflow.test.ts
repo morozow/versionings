@@ -8,7 +8,7 @@
  * focused on strategy integration (not real git repos).
  */
 
-import { EXIT_CODES, VersioningsError } from '../../errors';
+import { EXIT_CODES, VersioningsError } from '../../src/core/errors';
 
 // Mock fs for package.json reads
 jest.mock('fs', () => {
@@ -23,7 +23,7 @@ jest.mock('fs', () => {
 const fs = require('fs');
 
 // Mock version.utils to avoid config.ts side-effect
-jest.mock('../../version.utils', () => ({
+jest.mock('../../src/versioning/version.utils', () => ({
   AVAILABLE_SEMVERS: ['patch', 'minor', 'major', 'prepatch', 'preminor', 'premajor', 'prerelease'],
   composeVersionBranchName: (semver: string, version: string, comment: string, config?: any) => {
     const branchType = config ? config.git.branchType.version : 'version';
@@ -47,11 +47,11 @@ jest.mock('../../version.utils', () => ({
 }));
 
 // Mock pr.creator
-jest.mock('../../pr.creator', () => ({
+jest.mock('../../src/scm/pr.creator', () => ({
   createPR: jest.fn(),
 }));
 
-const { runPipeline } = require('../../pipeline');
+const { runPipeline } = require('../../src/core/pipeline');
 
 // ---------------------------------------------------------------------------
 // Shared mock config

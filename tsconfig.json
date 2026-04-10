@@ -9,7 +9,7 @@
       "node"
     ],
     "outDir": "./dist",
-    "rootDir": ".",
+    "rootDir": "src",
     "strict": true,
     "esModuleInterop": true,
     "resolveJsonModule": true,
@@ -20,7 +20,7 @@
     "ignoreDeprecations": "6.0"
   },
   "include": [
-    "*.ts"
+    "src/**/*.ts"
   ],
   "exclude": [
     "node_modules",

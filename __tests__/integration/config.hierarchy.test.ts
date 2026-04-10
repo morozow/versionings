@@ -10,8 +10,8 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { loadConfig } from '../../config.loader';
-import { EXIT_CODES, VersioningsError } from '../../errors';
+import { loadConfig } from '../../src/config/config.loader';
+import { EXIT_CODES, VersioningsError } from '../../src/core/errors';
 
 let tmpDir: string;
 

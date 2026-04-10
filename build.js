@@ -2,7 +2,7 @@
 // Copyright (c) 2018-present Raman Marozau
 const esbuild = require('esbuild');
 esbuild.buildSync({
-  entryPoints: ['version.ts'],
+  entryPoints: ['src/cli/version.ts'],
   bundle: true,
   platform: 'node',
   target: 'node18',

@@ -9,21 +9,21 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
-import { createExecutor } from '../../executor';
-import { createRollbackManager } from '../../rollback';
-import { createArtifactChecker } from '../../artifact.checker';
-import { loadAndValidateConfig } from '../../config.validator';
-import { runPipeline } from '../../pipeline';
-import { EXIT_CODES, VersioningsError } from '../../errors';
-import { createSCMRegistry } from '../../scm.registry';
-import { createHttpClient } from '../../http.client';
-import { createUrlParser } from '../../url.parser';
-import { resolveAuth } from '../../auth.resolver';
-import type { PrCreatorDeps } from '../../pr.creator';
-import type { SCM_Provider, PR_Options, PR_Result, SCM_ProviderConfig } from '../../scm.provider';
-import type { HttpClient } from '../../http.client';
-import type { UrlParser } from '../../url.parser';
-import type { PipelineResult, DryRunPlan } from '../../reporter';
+import { createExecutor } from '../../src/core/executor';
+import { createRollbackManager } from '../../src/core/rollback';
+import { createArtifactChecker } from '../../src/core/artifact.checker';
+import { loadAndValidateConfig } from '../../src/config/config.validator';
+import { runPipeline } from '../../src/core/pipeline';
+import { EXIT_CODES, VersioningsError } from '../../src/core/errors';
+import { createSCMRegistry } from '../../src/scm/scm.registry';
+import { createHttpClient } from '../../src/scm/http.client';
+import { createUrlParser } from '../../src/scm/url.parser';
+import { resolveAuth } from '../../src/scm/auth.resolver';
+import type { PrCreatorDeps } from '../../src/scm/pr.creator';
+import type { SCM_Provider, PR_Options, PR_Result, SCM_ProviderConfig } from '../../src/scm/scm.provider';
+import type { HttpClient } from '../../src/scm/http.client';
+import type { UrlParser } from '../../src/scm/url.parser';
+import type { PipelineResult, DryRunPlan } from '../../src/core/reporter';
 import {
   createRepoFixture,
   cleanup,

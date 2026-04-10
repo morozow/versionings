@@ -6,3 +6,5 @@ node_modules/
 
 # Version project configuration
 version.json
+src/
+__tests__/

@@ -13,18 +13,18 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
-import { createExecutor } from '../../executor';
-import { createRollbackManager } from '../../rollback';
-import { createArtifactChecker } from '../../artifact.checker';
-import { loadAndValidateConfig } from '../../config.validator';
-import { runPipeline } from '../../pipeline';
-import { analyzeBump, DEFAULT_BUMP_POLICY } from '../../commit.analyzer';
-import { generateChangelog, DEFAULT_GROUP_TITLES } from '../../changelog.generator';
-import { EXIT_CODES, VersioningsError } from '../../errors';
-import type { PipelineDeps } from '../../pipeline';
-import type { PipelineResult, DryRunPlan } from '../../reporter';
-import type { ChangelogOpts } from '../../changelog.generator';
-import type { BumpPolicy } from '../../commit.analyzer';
+import { createExecutor } from '../../src/core/executor';
+import { createRollbackManager } from '../../src/core/rollback';
+import { createArtifactChecker } from '../../src/core/artifact.checker';
+import { loadAndValidateConfig } from '../../src/config/config.validator';
+import { runPipeline } from '../../src/core/pipeline';
+import { analyzeBump, DEFAULT_BUMP_POLICY } from '../../src/versioning/commit.analyzer';
+import { generateChangelog, DEFAULT_GROUP_TITLES } from '../../src/versioning/changelog.generator';
+import { EXIT_CODES, VersioningsError } from '../../src/core/errors';
+import type { PipelineDeps } from '../../src/core/pipeline';
+import type { PipelineResult, DryRunPlan } from '../../src/core/reporter';
+import type { ChangelogOpts } from '../../src/versioning/changelog.generator';
+import type { BumpPolicy } from '../../src/versioning/commit.analyzer';
 import {
   createRepoFixture,
   snapshotRepoState,

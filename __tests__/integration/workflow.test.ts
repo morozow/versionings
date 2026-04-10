@@ -9,18 +9,18 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { PassThrough } from 'stream';
-import { createExecutor } from '../../executor';
-import { createRollbackManager } from '../../rollback';
-import { createArtifactChecker } from '../../artifact.checker';
-import { loadAndValidateConfig } from '../../config.validator';
-import { runPipeline } from '../../pipeline';
-import { runReleaseCommand, ReleaseCommandOpts, ReleaseCommandDeps } from '../../release.command';
-import { runRollbackCommand, RollbackCommandOpts, RollbackCommandDeps } from '../../rollback.command';
-import { createReporter } from '../../reporter';
-import { createOperationLog } from '../../operation.log';
-import { EXIT_CODES, VersioningsError } from '../../errors';
-import type { InteractionManager } from '../../interaction.manager';
-import type { PipelineResult } from '../../reporter';
+import { createExecutor } from '../../src/core/executor';
+import { createRollbackManager } from '../../src/core/rollback';
+import { createArtifactChecker } from '../../src/core/artifact.checker';
+import { loadAndValidateConfig } from '../../src/config/config.validator';
+import { runPipeline } from '../../src/core/pipeline';
+import { runReleaseCommand, ReleaseCommandOpts, ReleaseCommandDeps } from '../../src/cli/commands/release.command';
+import { runRollbackCommand, RollbackCommandOpts, RollbackCommandDeps } from '../../src/cli/commands/rollback.command';
+import { createReporter } from '../../src/core/reporter';
+import { createOperationLog } from '../../src/core/operation.log';
+import { EXIT_CODES, VersioningsError } from '../../src/core/errors';
+import type { InteractionManager } from '../../src/cli/interaction.manager';
+import type { PipelineResult } from '../../src/core/reporter';
 import {
   createRepoFixture,
   snapshotRepoState,
