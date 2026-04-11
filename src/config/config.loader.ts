@@ -62,6 +62,8 @@ const ENV_VAR_MAP: Record<string, string> = {
   VERSIONINGS_GIT_BRANCHING_DEVELOP_BRANCH: 'git.branching.developBranch',
   VERSIONINGS_CONVENTIONAL_COMMITS_ENABLED: 'conventionalCommits.enabled',
   VERSIONINGS_CONVENTIONAL_COMMITS_FALLBACK_BUMP: 'conventionalCommits.fallbackBump',
+  VERSIONINGS_LOG_LEVEL: 'logLevel',
+  VERSIONINGS_LOCK_TIMEOUT_MS: 'lockTimeoutMs',
 };
 
 /**
@@ -78,6 +80,11 @@ const ENV_VAR_COERCE: Record<string, (raw: string) => any> = {
   VERSIONINGS_CONVENTIONAL_COMMITS_FALLBACK_BUMP: (raw: string) => {
     if (raw === 'null') return null;
     return raw;
+  },
+  VERSIONINGS_LOCK_TIMEOUT_MS: (raw: string) => {
+    const n = Number(raw);
+    if (!Number.isInteger(n)) return raw; // let schema validation catch invalid values
+    return n;
   },
 };
 

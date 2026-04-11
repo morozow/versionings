@@ -3,6 +3,7 @@
 
 import { createExecutor, ExecFn } from '../../../src/core/executor';
 import { EXIT_CODES, VersioningsError } from '../../../src/core/errors';
+import type { StructuredLogger } from '../../../src/core/structured.logger';
 
 describe('createExecutor', () => {
   describe('successful execution', () => {
@@ -133,6 +134,49 @@ describe('createExecutor', () => {
       const executor = createExecutor();
       expect(executor).toHaveProperty('run');
       expect(typeof executor.run).toBe('function');
+    });
+
+    test('uses logger.debug instead of console.log when logger is provided', async () => {
+      const consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => { });
+      const debugSpy = jest.fn();
+      const logger: StructuredLogger = {
+        debug: debugSpy,
+        info: jest.fn(),
+        warn: jest.fn(),
+        error: jest.fn(),
+      };
+      const mockExec: ExecFn = (cmd, callback) => callback(null, 'ok', '');
+      const executor = createExecutor(mockExec, { logger });
+      await executor.run('git status');
+      expect(debugSpy).toHaveBeenCalledWith('git status', { component: 'executor' });
+      expect(consoleSpy).not.toHaveBeenCalled();
+      consoleSpy.mockRestore();
+    });
+
+    test('uses logger.debug even when verbose is also true', async () => {
+      const consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => { });
+      const debugSpy = jest.fn();
+      const logger: StructuredLogger = {
+        debug: debugSpy,
+        info: jest.fn(),
+        warn: jest.fn(),
+        error: jest.fn(),
+      };
+      const mockExec: ExecFn = (cmd, callback) => callback(null, 'ok', '');
+      const executor = createExecutor(mockExec, { verbose: true, logger });
+      await executor.run('git tag');
+      expect(debugSpy).toHaveBeenCalledWith('git tag', { component: 'executor' });
+      expect(consoleSpy).not.toHaveBeenCalled();
+      consoleSpy.mockRestore();
+    });
+
+    test('falls back to console.log when logger is not provided and verbose is true', async () => {
+      const consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => { });
+      const mockExec: ExecFn = (cmd, callback) => callback(null, 'ok', '');
+      const executor = createExecutor(mockExec, { verbose: true });
+      await executor.run('git push');
+      expect(consoleSpy).toHaveBeenCalledWith('git push');
+      consoleSpy.mockRestore();
     });
   });
 });

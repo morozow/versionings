@@ -29,6 +29,16 @@ export interface DoctorCommandDeps {
   nodeVersion?: string;
   /** DI: override for HTTP client (testability) */
   httpClient?: { get(url: string, headers?: Record<string, string>): Promise<{ status: number }> };
+  /** DI: override for fs.readFileSync (testability) */
+  readFileSync?: (p: string, enc: BufferEncoding) => string;
+  /** DI: override for fs.readdirSync (testability) */
+  readdirSync?: (p: string) => string[];
+  /** DI: override for process.kill (testability for stale lock PID check) */
+  processKill?: (pid: number, signal: number) => boolean;
+  /** DI: override for Date.now() (testability for stale lock timeout check) */
+  now?: () => number;
+  /** DI: lock timeout in ms (default 300000) */
+  lockTimeoutMs?: number;
 }
 
 export interface DoctorResult {
@@ -387,6 +397,158 @@ function checkCCConfig(config: Record<string, any>): DoctorCheck {
 }
 
 // ---------------------------------------------------------------------------
+// Observability checks: .versionings/ directory, stale lock, operation log
+// ---------------------------------------------------------------------------
+
+const DEFAULT_LOCK_TIMEOUT_MS = 300000;
+
+function checkVersioningsDir(
+  cwd: string,
+  exists: (p: string) => boolean,
+): DoctorCheck {
+  const dirPath = path.join(cwd, '.versionings');
+  if (exists(dirPath)) {
+    return {
+      name: 'versionings_dir',
+      status: 'pass',
+      found: dirPath,
+    };
+  }
+  return {
+    name: 'versionings_dir',
+    status: 'warn',
+    found: 'not found',
+    expected: '.versionings/ directory in project root',
+  };
+}
+
+function checkLockStaleness(
+  cwd: string,
+  exists: (p: string) => boolean,
+  readFile: (p: string, enc: BufferEncoding) => string,
+  processKill: (pid: number, signal: number) => boolean,
+  now: () => number,
+  lockTimeoutMs: number,
+): DoctorCheck {
+  const lockPath = path.join(cwd, '.versionings', 'lock');
+
+  if (!exists(lockPath)) {
+    return {
+      name: 'stale_lock',
+      status: 'pass',
+      found: 'no lock file',
+    };
+  }
+
+  let raw: string;
+  try {
+    raw = readFile(lockPath, 'utf8');
+  } catch {
+    return {
+      name: 'stale_lock',
+      status: 'warn',
+      found: 'lock file exists but cannot be read',
+      expected: 'no stale lock files',
+    };
+  }
+
+  let lockData: { pid?: number; operationId?: string; createdAt?: string };
+  try {
+    lockData = JSON.parse(raw);
+  } catch {
+    return {
+      name: 'stale_lock',
+      status: 'warn',
+      found: 'lock file contains invalid JSON (corrupted)',
+      expected: 'no stale lock files',
+    };
+  }
+
+  // Check timeout
+  if (lockData.createdAt) {
+    const elapsed = now() - Date.parse(lockData.createdAt);
+    if (elapsed > lockTimeoutMs) {
+      return {
+        name: 'stale_lock',
+        status: 'warn',
+        found: `stale lock (timeout exceeded: ${Math.round(elapsed / 1000)}s, PID: ${lockData.pid ?? 'unknown'}, operation: ${lockData.operationId ?? 'unknown'})`,
+        expected: 'no stale lock files',
+      };
+    }
+  }
+
+  // Check PID
+  if (typeof lockData.pid === 'number') {
+    try {
+      processKill(lockData.pid, 0);
+      // Process is alive — lock is active, not stale
+      return {
+        name: 'stale_lock',
+        status: 'pass',
+        found: `active lock (PID: ${lockData.pid}, operation: ${lockData.operationId ?? 'unknown'})`,
+      };
+    } catch (err: unknown) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'ESRCH') {
+        return {
+          name: 'stale_lock',
+          status: 'warn',
+          found: `stale lock (process not found, PID: ${lockData.pid}, operation: ${lockData.operationId ?? 'unknown'})`,
+          expected: 'no stale lock files',
+        };
+      }
+      // EPERM — process exists but no permission, treat as active
+      if (code === 'EPERM') {
+        return {
+          name: 'stale_lock',
+          status: 'pass',
+          found: `active lock (PID: ${lockData.pid}, operation: ${lockData.operationId ?? 'unknown'})`,
+        };
+      }
+    }
+  }
+
+  // Lock exists but can't determine state — report as informational
+  return {
+    name: 'stale_lock',
+    status: 'pass',
+    found: `lock file present (PID: ${lockData.pid ?? 'unknown'}, operation: ${lockData.operationId ?? 'unknown'})`,
+  };
+}
+
+function checkOperationLogCount(
+  cwd: string,
+  exists: (p: string) => boolean,
+  readdir: (p: string) => string[],
+): DoctorCheck {
+  const opsDir = path.join(cwd, '.versionings', 'operations');
+
+  if (!exists(opsDir)) {
+    return {
+      name: 'operation_log',
+      status: 'pass',
+      found: '0 entries (operations directory not found)',
+    };
+  }
+
+  try {
+    const files = readdir(opsDir).filter((f) => f.endsWith('.json') && f !== 'last.json');
+    return {
+      name: 'operation_log',
+      status: 'pass',
+      found: `${files.length} ${files.length === 1 ? 'entry' : 'entries'}`,
+    };
+  } catch {
+    return {
+      name: 'operation_log',
+      status: 'warn',
+      found: 'unable to read operations directory',
+      expected: '.versionings/operations/ accessible',
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main entry point
 // ---------------------------------------------------------------------------
 
@@ -401,6 +563,11 @@ export async function runDoctorCommand(
 ): Promise<DoctorCheck[]> {
   const exists = deps.existsSync ?? fs.existsSync;
   const nodeVersion = deps.nodeVersion ?? process.version;
+  const readFile = deps.readFileSync ?? ((p: string, enc: BufferEncoding) => fs.readFileSync(p, enc) as unknown as string);
+  const readdir = deps.readdirSync ?? ((p: string) => fs.readdirSync(p) as unknown as string[]);
+  const processKill = deps.processKill ?? ((pid: number, signal: number) => process.kill(pid, signal));
+  const now = deps.now ?? Date.now;
+  const lockTimeoutMs = deps.lockTimeoutMs ?? DEFAULT_LOCK_TIMEOUT_MS;
   const checks: DoctorCheck[] = [];
 
   // 1. Node.js version
@@ -419,15 +586,24 @@ export async function runDoctorCommand(
   // 5. package.json presence
   checks.push(checkPackageJson(deps.cwd, exists));
 
-  // 6. Conventional Commits history (runs independently of config)
+  // 6. .versionings/ directory presence
+  checks.push(checkVersioningsDir(deps.cwd, exists));
+
+  // 7. Stale lock file check
+  checks.push(checkLockStaleness(deps.cwd, exists, readFile, processKill, now, lockTimeoutMs));
+
+  // 8. Operation log entry count
+  checks.push(checkOperationLogCount(deps.cwd, exists, readdir));
+
+  // 9. Conventional Commits history (runs independently of config)
   checks.push(await checkConventionalCommits(deps.executor));
 
-  // 7. SCM API availability + 8. Branching strategy + 9. CC/Changelog config
+  // 10. SCM API availability + 11. Branching strategy + 12. CC/Changelog config
   try {
     const loadResult = deps.configLoader({ cwd: deps.cwd, env: deps.env });
     const configObj = loadResult.config as Record<string, any>;
 
-    // 7. SCM API availability (only when auth token is available)
+    // 10. SCM API availability (only when auth token is available)
     const scmCheck = await checkScmApi(
       configObj,
       deps.env,
@@ -435,11 +611,11 @@ export async function runDoctorCommand(
     );
     if (scmCheck) checks.push(scmCheck);
 
-    // 8. Branching strategy check
+    // 11. Branching strategy check
     const bsCheck = await checkBranchingStrategy(deps.executor, configObj);
     if (bsCheck) checks.push(bsCheck);
 
-    // 9. Conventional Commits & Changelog config check
+    // 12. Conventional Commits & Changelog config check
     checks.push(checkCCConfig(configObj));
   } catch (_) {
     // Config load failed — skip SCM API, branching, and CC config checks (config check already reported the error)

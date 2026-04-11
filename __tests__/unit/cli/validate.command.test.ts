@@ -726,3 +726,240 @@ describe('validate.command — changelog_config check', () => {
     expect(clCheck).toBeUndefined();
   });
 });
+
+
+describe('validate.command — log_level check', () => {
+  test('returns pass with default when logLevel is not configured', async () => {
+    const deps = makeDeps();
+
+    const result = await runValidateCommand({ json: false }, deps);
+
+    const check = result.checks.find((c) => c.name === 'log_level');
+    expect(check).toBeDefined();
+    expect(check!.status).toBe('pass');
+    expect(check!.details).toContain('warn');
+    expect(check!.details).toContain('default');
+  });
+
+  test('returns pass with value when logLevel is valid', async () => {
+    const configLoader = createMockConfigLoader(makeConfigLoadResult({
+      config: {
+        git: {
+          platform: 'github',
+          url: 'https://github.com/org/repo',
+          pr: { target: 'main' },
+          remote: 'origin',
+          branchType: { version: 'version' },
+          limits: { branchMaxCommentLength: 96 },
+          commit: { message: { semver: {} } },
+        },
+        logLevel: 'debug',
+      } as any,
+    }));
+    const deps = makeDeps({ configLoader });
+
+    const result = await runValidateCommand({ json: false }, deps);
+
+    const check = result.checks.find((c) => c.name === 'log_level');
+    expect(check).toBeDefined();
+    expect(check!.status).toBe('pass');
+    expect(check!.details).toContain('debug');
+  });
+
+  test('returns pass for each valid logLevel value', async () => {
+    for (const level of ['debug', 'info', 'warn', 'error']) {
+      const configLoader = createMockConfigLoader(makeConfigLoadResult({
+        config: {
+          git: {
+            platform: 'github',
+            url: 'https://github.com/org/repo',
+            pr: { target: 'main' },
+            remote: 'origin',
+            branchType: { version: 'version' },
+            limits: { branchMaxCommentLength: 96 },
+            commit: { message: { semver: {} } },
+          },
+          logLevel: level,
+        } as any,
+      }));
+      const deps = makeDeps({ configLoader });
+
+      const result = await runValidateCommand({ json: false }, deps);
+
+      const check = result.checks.find((c) => c.name === 'log_level');
+      expect(check).toBeDefined();
+      expect(check!.status).toBe('pass');
+      expect(check!.details).toContain(level);
+    }
+  });
+
+  test('returns fail for invalid logLevel value', async () => {
+    const configLoader = createMockConfigLoader(makeConfigLoadResult({
+      config: {
+        git: {
+          platform: 'github',
+          url: 'https://github.com/org/repo',
+          pr: { target: 'main' },
+          remote: 'origin',
+          branchType: { version: 'version' },
+          limits: { branchMaxCommentLength: 96 },
+          commit: { message: { semver: {} } },
+        },
+        logLevel: 'verbose',
+      } as any,
+    }));
+    const deps = makeDeps({ configLoader });
+
+    const result = await runValidateCommand({ json: false }, deps);
+
+    expect(result.valid).toBe(false);
+    const check = result.checks.find((c) => c.name === 'log_level');
+    expect(check).toBeDefined();
+    expect(check!.status).toBe('fail');
+    expect(check!.details).toContain('verbose');
+    expect(check!.details).toContain('debug');
+    expect(check!.details).toContain('error');
+  });
+
+  test('does not include log_level check when config fails to load', async () => {
+    const configLoader = createMockConfigLoader(
+      undefined,
+      new VersioningsError(EXIT_CODES.CONFIG_ERROR, 'bad config', {}),
+    );
+    const deps = makeDeps({ configLoader });
+
+    const result = await runValidateCommand({ json: false }, deps);
+
+    const check = result.checks.find((c) => c.name === 'log_level');
+    expect(check).toBeUndefined();
+  });
+});
+
+describe('validate.command — lock_timeout check', () => {
+  test('returns pass with default when lockTimeoutMs is not configured', async () => {
+    const deps = makeDeps();
+
+    const result = await runValidateCommand({ json: false }, deps);
+
+    const check = result.checks.find((c) => c.name === 'lock_timeout');
+    expect(check).toBeDefined();
+    expect(check!.status).toBe('pass');
+    expect(check!.details).toContain('300000');
+    expect(check!.details).toContain('default');
+  });
+
+  test('returns pass with value when lockTimeoutMs is valid', async () => {
+    const configLoader = createMockConfigLoader(makeConfigLoadResult({
+      config: {
+        git: {
+          platform: 'github',
+          url: 'https://github.com/org/repo',
+          pr: { target: 'main' },
+          remote: 'origin',
+          branchType: { version: 'version' },
+          limits: { branchMaxCommentLength: 96 },
+          commit: { message: { semver: {} } },
+        },
+        lockTimeoutMs: 600000,
+      } as any,
+    }));
+    const deps = makeDeps({ configLoader });
+
+    const result = await runValidateCommand({ json: false }, deps);
+
+    const check = result.checks.find((c) => c.name === 'lock_timeout');
+    expect(check).toBeDefined();
+    expect(check!.status).toBe('pass');
+    expect(check!.details).toContain('600000');
+  });
+
+  test('returns fail for non-integer lockTimeoutMs', async () => {
+    const configLoader = createMockConfigLoader(makeConfigLoadResult({
+      config: {
+        git: {
+          platform: 'github',
+          url: 'https://github.com/org/repo',
+          pr: { target: 'main' },
+          remote: 'origin',
+          branchType: { version: 'version' },
+          limits: { branchMaxCommentLength: 96 },
+          commit: { message: { semver: {} } },
+        },
+        lockTimeoutMs: 1.5,
+      } as any,
+    }));
+    const deps = makeDeps({ configLoader });
+
+    const result = await runValidateCommand({ json: false }, deps);
+
+    expect(result.valid).toBe(false);
+    const check = result.checks.find((c) => c.name === 'lock_timeout');
+    expect(check).toBeDefined();
+    expect(check!.status).toBe('fail');
+    expect(check!.details).toContain('1.5');
+    expect(check!.details).toContain('positive integer');
+  });
+
+  test('returns fail for zero lockTimeoutMs', async () => {
+    const configLoader = createMockConfigLoader(makeConfigLoadResult({
+      config: {
+        git: {
+          platform: 'github',
+          url: 'https://github.com/org/repo',
+          pr: { target: 'main' },
+          remote: 'origin',
+          branchType: { version: 'version' },
+          limits: { branchMaxCommentLength: 96 },
+          commit: { message: { semver: {} } },
+        },
+        lockTimeoutMs: 0,
+      } as any,
+    }));
+    const deps = makeDeps({ configLoader });
+
+    const result = await runValidateCommand({ json: false }, deps);
+
+    expect(result.valid).toBe(false);
+    const check = result.checks.find((c) => c.name === 'lock_timeout');
+    expect(check).toBeDefined();
+    expect(check!.status).toBe('fail');
+  });
+
+  test('returns fail for negative lockTimeoutMs', async () => {
+    const configLoader = createMockConfigLoader(makeConfigLoadResult({
+      config: {
+        git: {
+          platform: 'github',
+          url: 'https://github.com/org/repo',
+          pr: { target: 'main' },
+          remote: 'origin',
+          branchType: { version: 'version' },
+          limits: { branchMaxCommentLength: 96 },
+          commit: { message: { semver: {} } },
+        },
+        lockTimeoutMs: -100,
+      } as any,
+    }));
+    const deps = makeDeps({ configLoader });
+
+    const result = await runValidateCommand({ json: false }, deps);
+
+    expect(result.valid).toBe(false);
+    const check = result.checks.find((c) => c.name === 'lock_timeout');
+    expect(check).toBeDefined();
+    expect(check!.status).toBe('fail');
+  });
+
+  test('does not include lock_timeout check when config fails to load', async () => {
+    const configLoader = createMockConfigLoader(
+      undefined,
+      new VersioningsError(EXIT_CODES.CONFIG_ERROR, 'bad config', {}),
+    );
+    const deps = makeDeps({ configLoader });
+
+    const result = await runValidateCommand({ json: false }, deps);
+
+    const check = result.checks.find((c) => c.name === 'lock_timeout');
+    expect(check).toBeUndefined();
+  });
+});

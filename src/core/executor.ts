@@ -3,6 +3,7 @@
 
 import { exec } from 'child_process';
 import { EXIT_CODES, VersioningsError } from './errors';
+import type { StructuredLogger } from './structured.logger';
 
 export type ExecFn = (
   cmd: string,
@@ -11,6 +12,7 @@ export type ExecFn = (
 
 export interface ExecutorOpts {
   verbose?: boolean;
+  logger?: StructuredLogger;
 }
 
 export interface ExecutorResult {
@@ -45,7 +47,9 @@ export function createExecutor(execFn?: ExecFn | ExecutorOpts, opts?: ExecutorOp
   return {
     run(cmd: string): Promise<ExecutorResult> {
       return new Promise((resolve, reject) => {
-        if (resolvedOpts.verbose) {
+        if (resolvedOpts.logger) {
+          resolvedOpts.logger.debug(cmd, { component: 'executor' });
+        } else if (resolvedOpts.verbose) {
           console.log(cmd);
         }
 

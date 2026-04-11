@@ -5,6 +5,7 @@ import * as fs from 'fs';
 import Ajv from 'ajv';
 
 import { EXIT_CODES, VersioningsError } from '../core/errors';
+import type { LogLevel } from '../core/structured.logger';
 
 const schema = require('./version.schema.json');
 
@@ -131,6 +132,8 @@ export interface VersioningsConfig {
   };
   conventionalCommits?: ConventionalCommitsConfig;
   changelog?: ChangelogConfig;
+  logLevel?: LogLevel;
+  lockTimeoutMs?: number;
 }
 
 const DEFAULT_CONVENTIONAL_COMMITS_TYPES: Record<string, BumpLevel> = {
@@ -198,6 +201,8 @@ const defaultConfig: VersioningsConfig = {
     excludeTypes: [],
     includeNonConventional: false,
   },
+  logLevel: 'warn',
+  lockTimeoutMs: 300000,
   package: {
     semver: {
       patch: 'patch',
@@ -354,6 +359,8 @@ export function loadAndValidateConfig(configPath: string): VersioningsConfig {
       ...(clConfig.template !== undefined ? { template: clConfig.template } : {}),
       ...(clConfig.file !== undefined ? { file: clConfig.file } : {}),
     },
+    logLevel: versionConfig.logLevel !== undefined ? versionConfig.logLevel : defaultConfig.logLevel,
+    lockTimeoutMs: versionConfig.lockTimeoutMs !== undefined ? versionConfig.lockTimeoutMs : defaultConfig.lockTimeoutMs,
   };
 
   return config;

@@ -8,6 +8,7 @@ import type { PR_Result } from '../scm/scm.provider';
 
 export interface ReporterOpts {
   json: boolean;
+  verbose?: boolean;
 }
 
 export interface AutoBumpInfo {
@@ -31,6 +32,8 @@ export interface PipelineResult {
   strategy?: string;
   policyCheck?: { warnings: string[]; errors: string[]; protectionInfo: any };
   autoBump?: AutoBumpInfo;
+  operationId?: string;
+  totalDurationMs?: number;
 }
 
 export interface DryRunPlan {
@@ -55,6 +58,8 @@ export interface DryRunPlan {
   policyCheck?: { warnings: string[]; errors: string[]; protectionInfo: any };
   autoBump?: AutoBumpInfo;
   changelogPreview?: string;
+  operationId?: string;
+  totalDurationMs?: number;
 }
 
 export interface ValidateResult {
@@ -125,6 +130,7 @@ function formatAutoBumpLines(autoBump: AutoBumpInfo): string[] {
 
 export function createReporter(opts: ReporterOpts): Reporter {
   const jsonMode = opts.json;
+  const verboseMode = opts.verbose === true;
 
   function reportSuccess(result: PipelineResult): string {
     if (jsonMode) {
@@ -156,11 +162,21 @@ export function createReporter(opts: ReporterOpts): Reporter {
       if (result.autoBump !== undefined) {
         obj.autoBump = result.autoBump;
       }
+      if (result.operationId !== undefined) {
+        obj.operationId = result.operationId;
+      }
+      if (result.totalDurationMs !== undefined) {
+        obj.totalDurationMs = result.totalDurationMs;
+      }
       return JSON.stringify(obj) + '\n';
     }
 
     const lines: string[] = [];
-    lines.push(`${ANSI_FG_GREEN}Version updated successfully.${ANSI_FG_NC}`);
+    if (verboseMode && result.operationId) {
+      lines.push(`${ANSI_FG_GREEN}Version updated successfully.${ANSI_FG_NC} [Operation ID: ${result.operationId}]`);
+    } else {
+      lines.push(`${ANSI_FG_GREEN}Version updated successfully.${ANSI_FG_NC}`);
+    }
     lines.push(`Version: ${result.version}`);
     if (result.strategy !== undefined) {
       lines.push(`Strategy: ${result.strategy}`);
@@ -243,7 +259,11 @@ export function createReporter(opts: ReporterOpts): Reporter {
     }
 
     const lines: string[] = [];
-    lines.push(`${ANSI_FG_GREEN}Dry run — no changes will be made.${ANSI_FG_NC}`);
+    if (verboseMode && plan.operationId) {
+      lines.push(`${ANSI_FG_GREEN}Dry run — no changes will be made.${ANSI_FG_NC} [Operation ID: ${plan.operationId}]`);
+    } else {
+      lines.push(`${ANSI_FG_GREEN}Dry run — no changes will be made.${ANSI_FG_NC}`);
+    }
     lines.push(`Current version: ${plan.currentVersion}`);
     lines.push(`Next version: ${plan.nextVersion}`);
     lines.push(`Semantic version: ${plan.semver}`);

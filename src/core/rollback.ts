@@ -2,6 +2,7 @@
 // Copyright (c) 2018-present Raman Marozau
 
 import { Executor } from './executor';
+import type { StructuredLogger } from './structured.logger';
 
 export interface StepTypes {
   readonly NPM_VERSION_BUMP: 'npm_version_bump';
@@ -38,9 +39,10 @@ export interface RollbackManager {
 
 /**
  * @param executor — executor instance with run(cmd) method
+ * @param logger — optional structured logger for rollback step logging
  * @returns { record(step), rollback(): Promise<RollbackResult> }
  */
-export function createRollbackManager(executor: Executor): RollbackManager {
+export function createRollbackManager(executor: Executor, logger?: StructuredLogger): RollbackManager {
   const steps: RollbackStep[] = [];
 
   function record(step: RollbackStep): void {
@@ -49,18 +51,27 @@ export function createRollbackManager(executor: Executor): RollbackManager {
 
   async function rollback(): Promise<RollbackResult> {
     const failedSteps: Array<{ step: RollbackStep; error: Error }> = [];
+    const totalSteps = steps.length;
+
+    try { logger?.info('Rollback started', { totalSteps }); } catch { /* logging must never break rollback */ }
 
     for (let i = steps.length - 1; i >= 0; i--) {
       const step = steps[i];
       try {
+        try { logger?.info('Rolling back step', { stepType: step.type, index: i }); } catch { /* safe */ }
         await rollbackStep(step);
+        try { logger?.info('Rollback step completed', { stepType: step.type, result: 'success' }); } catch { /* safe */ }
       } catch (error: any) {
         failedSteps.push({ step, error });
+        try { logger?.warn('Rollback step failed', { stepType: step.type, result: 'failed', error: error.message }); } catch { /* safe */ }
       }
     }
 
+    const success = failedSteps.length === 0;
+    try { logger?.info('Rollback completed', { success, totalSteps, failedCount: failedSteps.length }); } catch { /* safe */ }
+
     return {
-      success: failedSteps.length === 0,
+      success,
       failedSteps,
     };
   }

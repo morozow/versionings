@@ -280,6 +280,64 @@ function checkChangelog(
   };
 }
 
+const VALID_LOG_LEVELS = ['debug', 'info', 'warn', 'error'];
+
+function checkLogLevel(
+  config: any,
+): ValidateResult['checks'][0] {
+  const logLevel = config?.logLevel;
+
+  if (logLevel === undefined || logLevel === null) {
+    return {
+      name: 'log_level',
+      status: 'pass',
+      details: 'logLevel: warn (default)',
+    };
+  }
+
+  if (typeof logLevel === 'string' && VALID_LOG_LEVELS.includes(logLevel)) {
+    return {
+      name: 'log_level',
+      status: 'pass',
+      details: `logLevel: ${logLevel}`,
+    };
+  }
+
+  return {
+    name: 'log_level',
+    status: 'fail',
+    details: `Invalid logLevel: "${String(logLevel)}". Must be one of: ${VALID_LOG_LEVELS.join(', ')}`,
+  };
+}
+
+function checkLockTimeout(
+  config: any,
+): ValidateResult['checks'][0] {
+  const lockTimeoutMs = config?.lockTimeoutMs;
+
+  if (lockTimeoutMs === undefined || lockTimeoutMs === null) {
+    return {
+      name: 'lock_timeout',
+      status: 'pass',
+      details: 'lockTimeoutMs: 300000 (default)',
+    };
+  }
+
+  if (typeof lockTimeoutMs === 'number' && Number.isInteger(lockTimeoutMs) && lockTimeoutMs > 0) {
+    return {
+      name: 'lock_timeout',
+      status: 'pass',
+      details: `lockTimeoutMs: ${lockTimeoutMs}`,
+    };
+  }
+
+  return {
+    name: 'lock_timeout',
+    status: 'fail',
+    details: `Invalid lockTimeoutMs: ${String(lockTimeoutMs)}. Must be a positive integer.`,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Main entry point
 // ---------------------------------------------------------------------------
@@ -291,8 +349,13 @@ function checkChangelog(
  *   1. Config existence and validity (via configLoader)
  *   2. Git repository accessibility
  *   3. Git remote URL match with config
+ *   4. Branching strategy
+ *   5. Conventional Commits
+ *   6. Changelog config
+ *   7. logLevel validity
+ *   8. lockTimeoutMs validity
  *
- * Requirements: 7.1, 7.2, 7.3, 7.4, 15.2
+ * Requirements: 7.1, 7.2, 7.3, 7.4, 14.5, 15.2
  */
 export async function runValidateCommand(
   opts: { json: boolean; strict?: boolean },
@@ -339,6 +402,16 @@ export async function runValidateCommand(
   // 6. Changelog config check
   if (loadResult) {
     allChecks.push(checkChangelog(loadResult.config));
+  }
+
+  // 7. logLevel check
+  if (loadResult) {
+    allChecks.push(checkLogLevel(loadResult.config));
+  }
+
+  // 8. lockTimeoutMs check
+  if (loadResult) {
+    allChecks.push(checkLockTimeout(loadResult.config));
   }
 
   // Build result

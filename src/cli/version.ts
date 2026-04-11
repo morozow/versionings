@@ -36,6 +36,12 @@ import { createStrategyRegistry } from '../branching/strategy.registry';
 import { checkPolicy } from '../branching/policy.checker';
 import type { PrCreatorDeps } from '../scm/pr.creator';
 import type { PipelineResult, DryRunPlan } from '../core/reporter';
+import { generateOperationId, createStructuredLogger } from '../core/structured.logger';
+import type { LogLevel } from '../core/structured.logger';
+import { resolveActorMetadata, detectCI } from '../core/actor.resolver';
+import type { ActorMetadata } from '../core/actor.resolver';
+import { createActionTracer } from '../core/action.tracer';
+import { createLockManager } from '../core/lock.manager';
 
 // ---------------------------------------------------------------------------
 // --print-config handler
@@ -148,7 +154,7 @@ async function handleValidate(args: any): Promise<void> {
   }
 }
 
-async function handlePlan(args: any): Promise<void> {
+async function handlePlan(args: any, operationId: string, actor: ActorMetadata, ci: boolean): Promise<void> {
   const cwd = process.cwd();
   const env = process.env as Record<string, string | undefined>;
 
@@ -162,8 +168,20 @@ async function handlePlan(args: any): Promise<void> {
   // (pipeline needs config.common.messages and config.package.semver)
   const config = loadAndValidateConfig(path.join(cwd, 'version.json'));
 
-  const executor = createExecutor({ verbose: args.verbose });
-  const rollbackManager = createRollbackManager(executor);
+  // Resolve logLevel: --verbose → debug, else from config (default warn)
+  const logLevel: LogLevel = args.verbose ? 'debug' : ((config as any).logLevel ?? 'warn');
+  const logger = createStructuredLogger({
+    output: process.stderr,
+    level: logLevel,
+    operationId,
+    actor: actor.ciActor ?? actor.gitUserName,
+    ci,
+  });
+
+  const actionTracer = createActionTracer();
+
+  const executor = createExecutor({ verbose: args.verbose, logger });
+  const rollbackManager = createRollbackManager(executor, logger);
   const artifactChecker = createArtifactChecker(executor);
   const reporter = createReporter({ json: args.json });
 
@@ -187,6 +205,10 @@ async function handlePlan(args: any): Promise<void> {
         prCreator: buildPrCreatorDeps(),
         strategyRegistry: createStrategyRegistry(),
         policyChecker: checkPolicy,
+        logger,
+        actionTracer,
+        operationId,
+        actor,
         ...(args.semver === 'auto' ? {
           commitAnalyzer: resolveCommitAnalyzerDeps(config),
           changelogGenerator: resolveChangelogGeneratorDeps(config),
@@ -198,7 +220,7 @@ async function handlePlan(args: any): Promise<void> {
   );
 }
 
-async function handleRelease(args: any): Promise<void> {
+async function handleRelease(args: any, operationId: string, actor: ActorMetadata, ci: boolean): Promise<void> {
   const cwd = process.cwd();
   const env = process.env as Record<string, string | undefined>;
 
@@ -212,10 +234,22 @@ async function handleRelease(args: any): Promise<void> {
   // (pipeline needs config.common.messages and config.package.semver)
   const config = loadAndValidateConfig(path.join(cwd, 'version.json'));
 
-  const executor = createExecutor({ verbose: args.verbose });
-  const rollbackManager = createRollbackManager(executor);
+  // Resolve logLevel: --verbose → debug, else from config (default warn)
+  const logLevel: LogLevel = args.verbose ? 'debug' : ((config as any).logLevel ?? 'warn');
+  const logger = createStructuredLogger({
+    output: process.stderr,
+    level: logLevel,
+    operationId,
+    actor: actor.ciActor ?? actor.gitUserName,
+    ci,
+  });
+
+  const actionTracer = createActionTracer();
+
+  const executor = createExecutor({ verbose: args.verbose, logger });
+  const rollbackManager = createRollbackManager(executor, logger);
   const artifactChecker = createArtifactChecker(executor);
-  const reporter = createReporter({ json: args.json });
+  const reporter = createReporter({ json: args.json, verbose: args.verbose });
 
   const interactionManager = createInteractionManager(
     {
@@ -231,6 +265,17 @@ async function handleRelease(args: any): Promise<void> {
   const operationLog = createOperationLog(
     path.join(cwd, '.versionings', 'operations'),
   );
+
+  // Create LockManager for release command (mutating operation)
+  const lockTimeoutMs: number = (config as any).lockTimeoutMs ?? 300000;
+  const lockManager = createLockManager({
+    lockDir: path.join(cwd, '.versionings'),
+    lockTimeoutMs,
+    ci,
+    logger,
+  });
+
+  const pipelineStart = Date.now();
 
   const result = await runReleaseCommand(
     {
@@ -254,6 +299,11 @@ async function handleRelease(args: any): Promise<void> {
         prCreator: buildPrCreatorDeps(),
         strategyRegistry: createStrategyRegistry(),
         policyChecker: checkPolicy,
+        logger,
+        actionTracer,
+        lockManager,
+        operationId,
+        actor,
         ...(args.semver === 'auto' ? {
           commitAnalyzer: resolveCommitAnalyzerDeps(config),
           changelogGenerator: resolveChangelogGeneratorDeps(config),
@@ -265,6 +315,13 @@ async function handleRelease(args: any): Promise<void> {
       stdout: process.stdout,
     },
   );
+
+  // Enrich result with operationId and totalDurationMs for reporter
+  const totalDurationMs = Date.now() - pipelineStart;
+  if (result && typeof result === 'object') {
+    (result as any).operationId = operationId;
+    (result as any).totalDurationMs = totalDurationMs;
+  }
 
   // Open PR URL in browser: only for fallback status (PR not yet created via API)
   if (!args.json && !args['dry-run']) {
@@ -454,7 +511,16 @@ async function main(): Promise<void> {
     return;
   }
 
-  // 6. Route to subcommand handler
+  // 6. Generate operationId, resolve actor metadata, detect CI
+  const operationId = generateOperationId();
+  const env = process.env as Record<string, string | undefined>;
+  const ci = detectCI(env);
+
+  // Resolve actor metadata using a temporary executor (no logger yet)
+  const tempExecutor = createExecutor({ verbose: false });
+  const actor = await resolveActorMetadata({ executor: tempExecutor, env });
+
+  // 7. Route to subcommand handler
   switch (command) {
     case 'init':
       await handleInit(args);
@@ -463,10 +529,10 @@ async function main(): Promise<void> {
       await handleValidate(args);
       break;
     case 'plan':
-      await handlePlan(args);
+      await handlePlan(args, operationId, actor, ci);
       break;
     case 'release':
-      await handleRelease(args);
+      await handleRelease(args, operationId, actor, ci);
       break;
     case 'rollback':
       await handleRollback(args);

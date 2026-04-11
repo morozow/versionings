@@ -93,6 +93,9 @@ function makeDeps(overrides: Partial<DoctorCommandDeps> = {}): DoctorCommandDeps
   const stdout = new PassThrough();
   stdout.setEncoding('utf8');
 
+  // Default existsSync: returns true for most paths, false for lock file
+  const defaultExistsSync = (p: string): boolean => !p.endsWith('/lock');
+
   return {
     configLoader: overrides.configLoader ?? createMockConfigLoader(),
     executor: overrides.executor ?? createMockExecutor(),
@@ -100,8 +103,13 @@ function makeDeps(overrides: Partial<DoctorCommandDeps> = {}): DoctorCommandDeps
     cwd: overrides.cwd ?? '/tmp/test-project',
     env: overrides.env ?? {},
     stdout: overrides.stdout as any ?? stdout,
-    existsSync: overrides.existsSync ?? (() => true),
+    existsSync: overrides.existsSync ?? defaultExistsSync,
     nodeVersion: overrides.nodeVersion ?? 'v20.10.0',
+    readFileSync: overrides.readFileSync ?? (() => { throw new Error('ENOENT'); }),
+    readdirSync: overrides.readdirSync ?? (() => []),
+    processKill: overrides.processKill ?? (() => true),
+    now: overrides.now ?? (() => Date.now()),
+    lockTimeoutMs: overrides.lockTimeoutMs ?? 300000,
   };
 }
 
@@ -141,12 +149,15 @@ describe('doctor.command — all checks pass', () => {
 
     const checks = await runDoctorCommand({ json: false }, deps);
 
-    expect(checks).toHaveLength(7);
+    expect(checks).toHaveLength(10);
     expect(checks.find((c) => c.name === 'node_version')?.status).toBe('pass');
     expect(checks.find((c) => c.name === 'git_version')?.status).toBe('pass');
     expect(checks.find((c) => c.name === 'config')?.status).toBe('pass');
     expect(checks.find((c) => c.name === 'git_remote')?.status).toBe('pass');
     expect(checks.find((c) => c.name === 'package_json')?.status).toBe('pass');
+    expect(checks.find((c) => c.name === 'versionings_dir')?.status).toBe('pass');
+    expect(checks.find((c) => c.name === 'stale_lock')?.status).toBe('pass');
+    expect(checks.find((c) => c.name === 'operation_log')?.status).toBe('pass');
     expect(checks.find((c) => c.name === 'conventional_commits')?.status).toBe('pass');
     expect(checks.find((c) => c.name === 'cc_config')?.status).toBe('pass');
   });
@@ -732,5 +743,224 @@ describe('doctor.command — cc_config check', () => {
 
     const ccCfgCheck = checks.find((c) => c.name === 'cc_config');
     expect(ccCfgCheck).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// .versionings/ directory check tests
+// ---------------------------------------------------------------------------
+
+describe('doctor.command — versionings_dir check', () => {
+  test('returns pass when .versionings/ directory exists', async () => {
+    const deps = makeDeps({ existsSync: () => true });
+
+    const checks = await runDoctorCommand({ json: false }, deps);
+
+    const dirCheck = checks.find((c) => c.name === 'versionings_dir')!;
+    expect(dirCheck.status).toBe('pass');
+    expect(dirCheck.found).toContain('.versionings');
+  });
+
+  test('returns warn when .versionings/ directory is missing', async () => {
+    const existsSync = (p: string): boolean => !p.includes('.versionings');
+    const deps = makeDeps({ existsSync });
+
+    const checks = await runDoctorCommand({ json: false }, deps);
+
+    const dirCheck = checks.find((c) => c.name === 'versionings_dir')!;
+    expect(dirCheck.status).toBe('warn');
+    expect(dirCheck.found).toBe('not found');
+    expect(dirCheck.expected).toContain('.versionings/');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Stale lock check tests
+// ---------------------------------------------------------------------------
+
+describe('doctor.command — stale_lock check', () => {
+  test('returns pass when no lock file exists', async () => {
+    const deps = makeDeps();
+
+    const checks = await runDoctorCommand({ json: false }, deps);
+
+    const lockCheck = checks.find((c) => c.name === 'stale_lock')!;
+    expect(lockCheck.status).toBe('pass');
+    expect(lockCheck.found).toContain('no lock file');
+  });
+
+  test('returns pass when lock file has active process', async () => {
+    const lockData = JSON.stringify({
+      pid: 12345,
+      operationId: 'abc-123',
+      command: 'release',
+      createdAt: new Date().toISOString(),
+      hostname: 'test-host',
+      ci: false,
+    });
+    const deps = makeDeps({
+      existsSync: () => true,
+      readFileSync: () => lockData,
+      processKill: () => true, // process is alive
+      readdirSync: () => [],
+    });
+
+    const checks = await runDoctorCommand({ json: false }, deps);
+
+    const lockCheck = checks.find((c) => c.name === 'stale_lock')!;
+    expect(lockCheck.status).toBe('pass');
+    expect(lockCheck.found).toContain('active lock');
+    expect(lockCheck.found).toContain('12345');
+  });
+
+  test('returns warn when lock file has dead process (ESRCH)', async () => {
+    const lockData = JSON.stringify({
+      pid: 99999,
+      operationId: 'dead-op-id',
+      command: 'release',
+      createdAt: new Date().toISOString(),
+      hostname: 'test-host',
+      ci: false,
+    });
+    const esrchError = Object.assign(new Error('ESRCH'), { code: 'ESRCH' });
+    const deps = makeDeps({
+      existsSync: () => true,
+      readFileSync: () => lockData,
+      processKill: () => { throw esrchError; },
+      readdirSync: () => [],
+    });
+
+    const checks = await runDoctorCommand({ json: false }, deps);
+
+    const lockCheck = checks.find((c) => c.name === 'stale_lock')!;
+    expect(lockCheck.status).toBe('warn');
+    expect(lockCheck.found).toContain('stale lock');
+    expect(lockCheck.found).toContain('process not found');
+    expect(lockCheck.found).toContain('99999');
+  });
+
+  test('returns warn when lock file has timed out', async () => {
+    const oldTime = new Date(Date.now() - 600000).toISOString(); // 10 minutes ago
+    const lockData = JSON.stringify({
+      pid: 12345,
+      operationId: 'timeout-op',
+      command: 'release',
+      createdAt: oldTime,
+      hostname: 'test-host',
+      ci: false,
+    });
+    const deps = makeDeps({
+      existsSync: () => true,
+      readFileSync: () => lockData,
+      processKill: () => true,
+      lockTimeoutMs: 300000, // 5 minutes
+      readdirSync: () => [],
+    });
+
+    const checks = await runDoctorCommand({ json: false }, deps);
+
+    const lockCheck = checks.find((c) => c.name === 'stale_lock')!;
+    expect(lockCheck.status).toBe('warn');
+    expect(lockCheck.found).toContain('stale lock');
+    expect(lockCheck.found).toContain('timeout exceeded');
+  });
+
+  test('returns warn when lock file contains invalid JSON', async () => {
+    const deps = makeDeps({
+      existsSync: () => true,
+      readFileSync: () => 'not valid json {{{',
+      readdirSync: () => [],
+    });
+
+    const checks = await runDoctorCommand({ json: false }, deps);
+
+    const lockCheck = checks.find((c) => c.name === 'stale_lock')!;
+    expect(lockCheck.status).toBe('warn');
+    expect(lockCheck.found).toContain('invalid JSON');
+  });
+
+  test('returns pass when EPERM (process exists but no permission)', async () => {
+    const lockData = JSON.stringify({
+      pid: 1,
+      operationId: 'eperm-op',
+      command: 'release',
+      createdAt: new Date().toISOString(),
+      hostname: 'test-host',
+      ci: false,
+    });
+    const epermError = Object.assign(new Error('EPERM'), { code: 'EPERM' });
+    const deps = makeDeps({
+      existsSync: () => true,
+      readFileSync: () => lockData,
+      processKill: () => { throw epermError; },
+      readdirSync: () => [],
+    });
+
+    const checks = await runDoctorCommand({ json: false }, deps);
+
+    const lockCheck = checks.find((c) => c.name === 'stale_lock')!;
+    expect(lockCheck.status).toBe('pass');
+    expect(lockCheck.found).toContain('active lock');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Operation log count check tests
+// ---------------------------------------------------------------------------
+
+describe('doctor.command — operation_log check', () => {
+  test('returns pass with 0 entries when operations directory is missing', async () => {
+    const existsSync = (p: string): boolean => {
+      if (p.includes('operations')) return false;
+      return !p.endsWith('/lock');
+    };
+    const deps = makeDeps({ existsSync });
+
+    const checks = await runDoctorCommand({ json: false }, deps);
+
+    const logCheck = checks.find((c) => c.name === 'operation_log')!;
+    expect(logCheck.status).toBe('pass');
+    expect(logCheck.found).toContain('0 entries');
+  });
+
+  test('returns pass with correct count of operation log entries', async () => {
+    const deps = makeDeps({
+      readdirSync: () => [
+        '2024-01-01T00-00-00-000Z-patch-1.0.1.json',
+        '2024-01-02T00-00-00-000Z-minor-1.1.0.json',
+        '2024-01-03T00-00-00-000Z-major-2.0.0.json',
+        'last.json',
+      ],
+    });
+
+    const checks = await runDoctorCommand({ json: false }, deps);
+
+    const logCheck = checks.find((c) => c.name === 'operation_log')!;
+    expect(logCheck.status).toBe('pass');
+    expect(logCheck.found).toBe('3 entries');
+  });
+
+  test('returns pass with singular "entry" for single log', async () => {
+    const deps = makeDeps({
+      readdirSync: () => ['2024-01-01T00-00-00-000Z-patch-1.0.1.json'],
+    });
+
+    const checks = await runDoctorCommand({ json: false }, deps);
+
+    const logCheck = checks.find((c) => c.name === 'operation_log')!;
+    expect(logCheck.status).toBe('pass');
+    expect(logCheck.found).toBe('1 entry');
+  });
+
+  test('returns warn when operations directory cannot be read', async () => {
+    const deps = makeDeps({
+      readdirSync: () => { throw new Error('EACCES'); },
+    });
+
+    const checks = await runDoctorCommand({ json: false }, deps);
+
+    const logCheck = checks.find((c) => c.name === 'operation_log')!;
+    expect(logCheck.status).toBe('warn');
+    expect(logCheck.found).toContain('unable to read');
   });
 });

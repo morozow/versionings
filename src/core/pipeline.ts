@@ -2,6 +2,7 @@
 // Copyright (c) 2018-present Raman Marozau
 
 import * as fs from 'fs';
+import * as os from 'os';
 import { EXIT_CODES, VersioningsError } from './errors';
 import { STEP_TYPES } from './rollback';
 import {
@@ -18,7 +19,8 @@ import type { RollbackManager } from './rollback';
 import type { ArtifactChecker } from './artifact.checker';
 import type { VersioningsConfig } from '../config/config.validator';
 import type { PipelineResult, DryRunPlan } from './reporter';
-import type { OperationLog, OperationLogEntry } from './operation.log';
+import type { OperationLog, OperationLogEntry, AuditEntry } from './operation.log';
+import { maskTokens } from './operation.log';
 import type { RollbackStep } from './rollback';
 import type { PrCreatorDeps } from '../scm/pr.creator';
 import type { PrMode } from '../scm/scm.provider';
@@ -29,6 +31,10 @@ import type { Branching_Strategy, BranchResult } from '../branching/branching.st
 import { createPR } from '../scm/pr.creator';
 import type { BumpResult, BumpPolicy, CommitAnalyzerDeps } from '../versioning/commit.analyzer';
 import type { ChangelogOpts, ChangelogResult } from '../versioning/changelog.generator';
+import type { StructuredLogger } from './structured.logger';
+import type { ActionTracer } from './action.tracer';
+import type { LockManager } from './lock.manager';
+import type { ActorMetadata } from './actor.resolver';
 
 export interface PipelineOpts {
   semver: string;
@@ -61,6 +67,11 @@ export interface PipelineDeps {
     changelogConfig: ChangelogOpts;
     changelogFile?: string;
   };
+  logger?: StructuredLogger;
+  actionTracer?: ActionTracer;
+  lockManager?: LockManager;
+  operationId?: string;
+  actor?: ActorMetadata;
 }
 
 /**
@@ -116,6 +127,32 @@ export async function runPipeline(
 ): Promise<PipelineResult | DryRunPlan> {
   const { executor, config, rollbackManager, artifactChecker, operationLog, prCreator, strategyRegistry, policyChecker, commitAnalyzer, changelogGenerator } = deps;
   const { semver, branch, push, preid, dryRun, prMode, noPr } = opts;
+  const logger = deps.logger;
+  const tracer = deps.actionTracer;
+  const lockManager = deps.lockManager;
+  const operationId = deps.operationId;
+  const actor = deps.actor;
+
+  /**
+   * Execute a pipeline step with optional tracing and logging.
+   */
+  async function tracedStep<T>(stepName: string, fn: () => Promise<T>): Promise<T> {
+    if (tracer) tracer.startStep(stepName);
+    if (logger) logger.info(`Step started: ${stepName}`, { step: stepName });
+    const stepStart = Date.now();
+    try {
+      const result = await fn();
+      const durationMs = Date.now() - stepStart;
+      if (tracer) tracer.endStep(stepName, 'success');
+      if (logger) logger.debug(`Step completed: ${stepName}`, { step: stepName, durationMs });
+      return result;
+    } catch (err: any) {
+      const durationMs = Date.now() - stepStart;
+      if (tracer) tracer.endStep(stepName, 'failed', err.message || String(err));
+      if (logger) logger.debug(`Step failed: ${stepName}`, { step: stepName, durationMs, error: err.message || String(err) });
+      throw err;
+    }
+  }
 
   // --- Stage 0.5: Auto-bump resolution (when semver === 'auto') ---
   let resolvedSemver = semver;
@@ -131,10 +168,12 @@ export async function runPipeline(
       );
     }
 
-    bumpResult = await commitAnalyzer.analyzeBump({
-      executor,
-      bumpPolicy: commitAnalyzer.bumpPolicy,
-      fallbackBump: commitAnalyzer.fallbackBump,
+    bumpResult = await tracedStep('auto-bump', async () => {
+      return commitAnalyzer.analyzeBump({
+        executor,
+        bumpPolicy: commitAnalyzer.bumpPolicy,
+        fallbackBump: commitAnalyzer.fallbackBump,
+      });
     });
 
     resolvedSemver = bumpResult.bump;
@@ -164,72 +203,83 @@ export async function runPipeline(
   }
 
   // --- Stage 1: Validate input parameters ---
-  if (!resolvedSemver || !AVAILABLE_SEMVERS.includes(resolvedSemver)) {
-    throw new VersioningsError(
-      EXIT_CODES.INVALID_ARGS,
-      config.common.messages.unavailableSemanticVersion,
-    );
-  }
+  await tracedStep('validate-input', async () => {
+    if (!resolvedSemver || !AVAILABLE_SEMVERS.includes(resolvedSemver)) {
+      throw new VersioningsError(
+        EXIT_CODES.INVALID_ARGS,
+        config.common.messages.unavailableSemanticVersion,
+      );
+    }
 
-  if (!branch || typeof branch !== 'string' || branch.trim().length === 0) {
-    throw new VersioningsError(
-      EXIT_CODES.INVALID_ARGS,
-      config.common.messages.undefinedVersionBranchName,
-    );
-  }
+    if (!branch || typeof branch !== 'string' || branch.trim().length === 0) {
+      throw new VersioningsError(
+        EXIT_CODES.INVALID_ARGS,
+        config.common.messages.undefinedVersionBranchName,
+      );
+    }
 
-  if (branch.length >= config.git.limits.branchMaxCommentLength) {
-    throw new VersioningsError(
-      EXIT_CODES.INVALID_ARGS,
-      `${config.common.messages.incorrectVersionBranchNameLength} ${config.git.limits.branchMaxCommentLength} characters.`,
-    );
-  }
+    if (branch.length >= config.git.limits.branchMaxCommentLength) {
+      throw new VersioningsError(
+        EXIT_CODES.INVALID_ARGS,
+        `${config.common.messages.incorrectVersionBranchNameLength} ${config.git.limits.branchMaxCommentLength} characters.`,
+      );
+    }
 
-  if (/-{2,}/.test(branch)) {
-    throw new VersioningsError(
-      EXIT_CODES.INVALID_ARGS,
-      config.common.messages.incorrectVersionBranchNameCharactersDashes,
-    );
-  }
+    if (/-{2,}/.test(branch)) {
+      throw new VersioningsError(
+        EXIT_CODES.INVALID_ARGS,
+        config.common.messages.incorrectVersionBranchNameCharactersDashes,
+      );
+    }
+  });
 
   // --- Stage 2: Check git status ---
-  const statusResult = await executor.run('git status --porcelain');
-  if (statusResult.stdout.length > 0) {
-    throw new VersioningsError(
-      EXIT_CODES.DIRTY_TREE,
-      config.common.messages.untrackedGitFiles,
-    );
-  }
+  await tracedStep('check-git-status', async () => {
+    const statusResult = await executor.run('git status --porcelain');
+    if (statusResult.stdout.length > 0) {
+      throw new VersioningsError(
+        EXIT_CODES.DIRTY_TREE,
+        config.common.messages.untrackedGitFiles,
+      );
+    }
+  });
 
   // --- Stage 3: Check git remote ---
-  const remoteResult = await executor.run('git remote --verbose');
-  const remoteLines = remoteResult.stdout.split('\n');
-  const isCorrectGitUrl = remoteLines.some((line: string) =>
-    line.split(/\s+/).some((part: string) => part.trim() === config.git.url),
-  );
-  if (!isCorrectGitUrl) {
-    throw new VersioningsError(
-      EXIT_CODES.CONFIG_ERROR,
-      config.common.messages.incorrectGitRemote,
+  await tracedStep('check-remote', async () => {
+    const remoteResult = await executor.run('git remote --verbose');
+    const remoteLines = remoteResult.stdout.split('\n');
+    const isCorrectGitUrl = remoteLines.some((line: string) =>
+      line.split(/\s+/).some((part: string) => part.trim() === config.git.url),
     );
-  }
+    if (!isCorrectGitUrl) {
+      throw new VersioningsError(
+        EXIT_CODES.CONFIG_ERROR,
+        config.common.messages.incorrectGitRemote,
+      );
+    }
+  });
 
   // --- Stage 4: Compute next version ---
   // Read current version from package.json
   const pkgRaw = fs.readFileSync('./package.json', 'utf8');
   const currentVersion: string = JSON.parse(pkgRaw).version;
 
-  // Probe: run npm version to get next version, then undo
   const npmCmd = `npm --no-git-tag-version version ${resolvedSemver} --message "${semverNpmMessage(resolvedSemver, branch, config)}" ${preidParam(preid)}`.trim();
-  const versionResult = await executor.run(npmCmd);
-  const nextVersion = versionResult.stdout.trim().replace(/^v/, '');
 
-  // Undo the probe — restore package.json (and package-lock.json if it exists)
-  const hasLockfile = fs.existsSync('./package-lock.json');
-  const checkoutFiles = hasLockfile
-    ? 'git checkout -- package.json package-lock.json'
-    : 'git checkout -- package.json';
-  await executor.run(checkoutFiles);
+  const nextVersion = await tracedStep('compute-version', async () => {
+    // Probe: run npm version to get next version, then undo
+    const versionResult = await executor.run(npmCmd);
+    const version = versionResult.stdout.trim().replace(/^v/, '');
+
+    // Undo the probe — restore package.json (and package-lock.json if it exists)
+    const hasLockfile = fs.existsSync('./package-lock.json');
+    const checkoutFiles = hasLockfile
+      ? 'git checkout -- package.json package-lock.json'
+      : 'git checkout -- package.json';
+    await executor.run(checkoutFiles);
+
+    return version;
+  });
 
   // --- Stage 3.5: Get strategy and generate names ---
   let branchResult: BranchResult;
@@ -268,26 +318,30 @@ export async function runPipeline(
 
   // --- Stage 3.7: Policy Check ---
   if (policyChecker) {
-    const targetBranch = branchResult.branchName || currentBranch;
-    policyResult = await policyChecker(targetBranch, { executor, config } as any);
-    if (policyResult.errors.length > 0) {
-      throw new VersioningsError(EXIT_CODES.POLICY_VIOLATION, policyResult.errors.join('; '));
-    }
-    // Warnings: output to stderr
-    if (policyResult.warnings.length > 0) {
-      for (const warning of policyResult.warnings) {
-        process.stderr.write(`Warning: ${warning}\n`);
+    await tracedStep('policy-check', async () => {
+      const targetBranch = branchResult.branchName || currentBranch;
+      policyResult = await policyChecker(targetBranch, { executor, config } as any);
+      if (policyResult!.errors.length > 0) {
+        throw new VersioningsError(EXIT_CODES.POLICY_VIOLATION, policyResult!.errors.join('; '));
       }
-    }
+      // Warnings: output to stderr
+      if (policyResult!.warnings.length > 0) {
+        for (const warning of policyResult!.warnings) {
+          process.stderr.write(`Warning: ${warning}\n`);
+        }
+      }
+    });
   }
 
   // --- Stage 6: Check artifact uniqueness ---
-  await artifactChecker.checkUniqueness({
-    tagName,
-    branchName: branchResult.branchName,
-    push: !!push,
-    remote: config.git.remote,
-    skipBranchCheck: branchResult.reuseBranch,
+  await tracedStep('artifact-check', async () => {
+    await artifactChecker.checkUniqueness({
+      tagName,
+      branchName: branchResult.branchName,
+      push: !!push,
+      remote: config.git.remote,
+      skipBranchCheck: branchResult.reuseBranch,
+    });
   });
 
   // --- Stage 7: Dry-run — return plan without mutations ---
@@ -369,24 +423,42 @@ export async function runPipeline(
     return plan;
   }
 
+  // --- Lock acquisition: before mutation steps, only if not dry-run ---
+  if (lockManager && operationId) {
+    try {
+      lockManager.acquire(operationId, 'release');
+    } catch (err: any) {
+      // Lock acquisition failed — abort before any mutating operations
+      if (logger) logger.error('Lock acquisition failed', { error: err.message || String(err) });
+      throw err;
+    }
+  }
+
   // --- Stages 8–12: Mutation steps with rollback on error ---
   const executedSteps: RollbackStep[] = [];
   try {
     // Stage 8: npm version bump (real)
-    await executor.run(npmCmd);
+    await tracedStep('npm-version-bump', async () => {
+      await executor.run(npmCmd);
+    });
     const npmStep: RollbackStep = { type: STEP_TYPES.NPM_VERSION_BUMP, meta: {} };
     rollbackManager.record(npmStep);
     executedSteps.push(npmStep);
 
     // Stage 9: Create branch (strategy-aware)
     if (branchResult.branchName !== null) {
+      await tracedStep('branch-create', async () => {
+        if (branchResult.reuseBranch) {
+          await executor.run(`git checkout ${branchResult.branchName}`);
+        } else {
+          await executor.run(`git checkout -b ${branchResult.branchName}`);
+        }
+      });
       if (branchResult.reuseBranch) {
-        await executor.run(`git checkout ${branchResult.branchName}`);
         const branchStep: RollbackStep = { type: STEP_TYPES.BRANCH_SWITCHED, meta: { previousBranch: currentBranch } };
         rollbackManager.record(branchStep);
         executedSteps.push(branchStep);
       } else {
-        await executor.run(`git checkout -b ${branchResult.branchName}`);
         const branchStep: RollbackStep = { type: STEP_TYPES.BRANCH_CREATED, meta: { name: branchResult.branchName } };
         rollbackManager.record(branchStep);
         executedSteps.push(branchStep);
@@ -394,25 +466,31 @@ export async function runPipeline(
     }
 
     // Stage 10: Create annotated tag
-    await executor.run(`git tag --annotate ${tagName} --message "${commitMessage}"`);
+    await tracedStep('tag-create', async () => {
+      await executor.run(`git tag --annotate ${tagName} --message "${commitMessage}"`);
+    });
     const tagStep: RollbackStep = { type: STEP_TYPES.TAG_CREATED, meta: { name: tagName } };
     rollbackManager.record(tagStep);
     executedSteps.push(tagStep);
 
     // Stage 10.5: Write changelog to file (before git commit)
     if (changelogText && changelogGenerator?.changelogFile) {
-      const changelogFile = changelogGenerator.changelogFile;
-      const existingContent = fs.existsSync(changelogFile)
-        ? fs.readFileSync(changelogFile, 'utf8')
-        : null;
-      const fileContent = prependChangelogContent(existingContent, changelogText);
+      await tracedStep('changelog-write', async () => {
+        const changelogFile = changelogGenerator.changelogFile!;
+        const existingContent = fs.existsSync(changelogFile)
+          ? fs.readFileSync(changelogFile, 'utf8')
+          : null;
+        const fileContent = prependChangelogContent(existingContent, changelogText!);
 
-      fs.writeFileSync(changelogFile, fileContent, 'utf8');
-      await executor.run(`git add ${changelogFile}`);
+        fs.writeFileSync(changelogFile, fileContent, 'utf8');
+        await executor.run(`git add ${changelogFile}`);
+      });
     }
 
     // Stage 11: Commit all changes
-    await executor.run(`git commit --all --message "${commitMessage}"`);
+    await tracedStep('commit', async () => {
+      await executor.run(`git commit --all --message "${commitMessage}"`);
+    });
     const commitStep: RollbackStep = { type: STEP_TYPES.COMMITTED, meta: {} };
     rollbackManager.record(commitStep);
     executedSteps.push(commitStep);
@@ -421,31 +499,35 @@ export async function runPipeline(
     let pullRequestUrl: string | null = null;
     let pullRequest: PR_Result | undefined = undefined;
     if (push) {
-      const pushBranch = branchResult.branchName || currentBranch;
-      await executor.run(`git push ${config.git.remote} ${pushBranch} --follow-tags`);
-      const pushStep: RollbackStep = {
-        type: STEP_TYPES.PUSHED,
-        meta: { branch: pushBranch, tag: tagName, remote: config.git.remote },
-      };
-      rollbackManager.record(pushStep);
-      executedSteps.push(pushStep);
+      await tracedStep('push', async () => {
+        const pushBranch = branchResult.branchName || currentBranch;
+        await executor.run(`git push ${config.git.remote} ${pushBranch} --follow-tags`);
+        const pushStep: RollbackStep = {
+          type: STEP_TYPES.PUSHED,
+          meta: { branch: pushBranch, tag: tagName, remote: config.git.remote },
+        };
+        rollbackManager.record(pushStep);
+        executedSteps.push(pushStep);
+      });
 
       // Stage 13: Create PR/MR
       if (!noPr) {
         const prBranch = branchResult.branchName || currentBranch;
         if (prCreator) {
           try {
-            // Pass changelogText as PR body when available
-            const prDeps = changelogText
-              ? { ...prCreator, changelogBody: changelogText }
-              : prCreator;
-            pullRequest = await createPR(
-              config,
-              prBranch,
-              commitMessage,
-              prMode || 'auto',
-              prDeps,
-            );
+            pullRequest = await tracedStep('pr-create', async () => {
+              // Pass changelogText as PR body when available
+              const prDeps = changelogText
+                ? { ...prCreator, changelogBody: changelogText }
+                : prCreator;
+              return createPR(
+                config,
+                prBranch,
+                commitMessage,
+                prMode || 'auto',
+                prDeps,
+              );
+            });
             pullRequestUrl = pullRequest.url;
           } catch (err: any) {
             // PR error does not trigger rollback — pipeline completes with success=true
@@ -494,18 +576,43 @@ export async function runPipeline(
     // Save operation log (best-effort)
     if (operationLog) {
       try {
-        const entry: OperationLogEntry = {
-          schemaVersion: 1,
-          timestamp: new Date().toISOString(),
-          semver: resolvedSemver,
-          version: nextVersion,
-          previousVersion: currentVersion,
-          branch: branchResult.branchName || currentBranch,
-          tag: tagName,
-          steps: executedSteps,
-          result: 'success',
-        };
-        await operationLog.save(entry);
+        if (operationId) {
+          const auditEntry: AuditEntry = {
+            schemaVersion: 2,
+            timestamp: new Date().toISOString(),
+            operationId,
+            semver: resolvedSemver,
+            version: nextVersion,
+            previousVersion: currentVersion,
+            branch: branchResult.branchName || currentBranch,
+            tag: tagName,
+            steps: executedSteps,
+            result: 'success',
+            actor: actor ?? null,
+            trace: tracer ? tracer.getTrace() : [],
+            environment: {
+              nodeVersion: process.version,
+              cliVersion: currentVersion,
+              os: `${os.platform()}-${os.arch()}`,
+              ci: !!(process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true' || process.env.GITLAB_CI === 'true'),
+            },
+            command: maskTokens(process.argv.join(' ')),
+          };
+          await operationLog.save(auditEntry);
+        } else {
+          const entry: OperationLogEntry = {
+            schemaVersion: 1,
+            timestamp: new Date().toISOString(),
+            semver: resolvedSemver,
+            version: nextVersion,
+            previousVersion: currentVersion,
+            branch: branchResult.branchName || currentBranch,
+            tag: tagName,
+            steps: executedSteps,
+            result: 'success',
+          };
+          await operationLog.save(entry);
+        }
       } catch (_) {
         // best-effort: do not let log failure affect pipeline result
       }
@@ -519,22 +626,51 @@ export async function runPipeline(
     // Save operation log on failure (best-effort)
     if (operationLog) {
       try {
-        const entry: OperationLogEntry = {
-          schemaVersion: 1,
-          timestamp: new Date().toISOString(),
-          semver: resolvedSemver,
-          version: nextVersion,
-          previousVersion: currentVersion,
-          branch: branchResult.branchName || currentBranch,
-          tag: tagName,
-          steps: executedSteps,
-          result: 'failed',
-          error: {
-            code: error.code ?? EXIT_CODES.COMMAND_FAILED,
-            message: error.message || String(error),
-          },
-        };
-        await operationLog.save(entry);
+        if (operationId) {
+          const auditEntry: AuditEntry = {
+            schemaVersion: 2,
+            timestamp: new Date().toISOString(),
+            operationId,
+            semver: resolvedSemver,
+            version: nextVersion,
+            previousVersion: currentVersion,
+            branch: branchResult.branchName || currentBranch,
+            tag: tagName,
+            steps: executedSteps,
+            result: 'failed',
+            error: {
+              code: error.code ?? EXIT_CODES.COMMAND_FAILED,
+              message: error.message || String(error),
+            },
+            actor: actor ?? null,
+            trace: tracer ? tracer.getTrace() : [],
+            environment: {
+              nodeVersion: process.version,
+              cliVersion: currentVersion,
+              os: `${os.platform()}-${os.arch()}`,
+              ci: !!(process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true' || process.env.GITLAB_CI === 'true'),
+            },
+            command: maskTokens(process.argv.join(' ')),
+          };
+          await operationLog.save(auditEntry);
+        } else {
+          const entry: OperationLogEntry = {
+            schemaVersion: 1,
+            timestamp: new Date().toISOString(),
+            semver: resolvedSemver,
+            version: nextVersion,
+            previousVersion: currentVersion,
+            branch: branchResult.branchName || currentBranch,
+            tag: tagName,
+            steps: executedSteps,
+            result: 'failed',
+            error: {
+              code: error.code ?? EXIT_CODES.COMMAND_FAILED,
+              message: error.message || String(error),
+            },
+          };
+          await operationLog.save(entry);
+        }
       } catch (_) {
         // best-effort: do not let log failure mask original error
       }
@@ -565,5 +701,14 @@ export async function runPipeline(
       error.message || String(error),
       { cmd: error.details?.cmd },
     );
+  } finally {
+    // Release lock in finally block (always runs on success, failure, or rollback)
+    if (lockManager) {
+      try {
+        lockManager.release();
+      } catch (_) {
+        // Lock release errors are non-fatal
+      }
+    }
   }
 }

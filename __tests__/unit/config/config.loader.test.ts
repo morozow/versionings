@@ -350,6 +350,67 @@ describe('config.loader — loadConfig', () => {
       expect(result.config.conventionalCommits!.fallbackBump).toBeNull();
     });
 
+    test('VERSIONINGS_LOG_LEVEL → logLevel', () => {
+      const fs = createMockFs({
+        [path.join(CWD, 'version.json')]: JSON.stringify(VALID_GIT),
+      });
+      const result = loadConfig({
+        cwd: CWD,
+        env: { VERSIONINGS_LOG_LEVEL: 'debug' },
+        ...fs,
+      });
+      expect(result.config.logLevel).toBe('debug');
+      expect(result.sources.some((s) => s.name === 'env')).toBe(true);
+    });
+
+    test('VERSIONINGS_LOG_LEVEL validates via schema (invalid value rejected)', () => {
+      const fs = createMockFs({
+        [path.join(CWD, 'version.json')]: JSON.stringify(VALID_GIT),
+      });
+      expect(() =>
+        loadConfig({
+          cwd: CWD,
+          env: { VERSIONINGS_LOG_LEVEL: 'verbose' },
+          ...fs,
+        }),
+      ).toThrow(VersioningsError);
+    });
+
+    test('VERSIONINGS_LOCK_TIMEOUT_MS → lockTimeoutMs (parsed as integer)', () => {
+      const fs = createMockFs({
+        [path.join(CWD, 'version.json')]: JSON.stringify(VALID_GIT),
+      });
+      const result = loadConfig({
+        cwd: CWD,
+        env: { VERSIONINGS_LOCK_TIMEOUT_MS: '600000' },
+        ...fs,
+      });
+      expect(result.config.lockTimeoutMs).toBe(600000);
+      expect(typeof result.config.lockTimeoutMs).toBe('number');
+    });
+
+    test('VERSIONINGS_LOCK_TIMEOUT_MS with non-integer value is rejected by schema', () => {
+      const fs = createMockFs({
+        [path.join(CWD, 'version.json')]: JSON.stringify(VALID_GIT),
+      });
+      expect(() =>
+        loadConfig({
+          cwd: CWD,
+          env: { VERSIONINGS_LOCK_TIMEOUT_MS: 'abc' },
+          ...fs,
+        }),
+      ).toThrow(VersioningsError);
+    });
+
+    test('config without logLevel and lockTimeoutMs env vars passes validation (backward compat)', () => {
+      const fs = createMockFs({
+        [path.join(CWD, 'version.json')]: JSON.stringify(VALID_GIT),
+      });
+      const result = loadConfig({ cwd: CWD, env: {}, ...fs });
+      // No error thrown — backward compatible
+      expect(result.config.git.platform).toBe('github');
+    });
+
     test('config without new env vars works as before (backward compatibility)', () => {
       const fs = createMockFs({
         [path.join(CWD, 'version.json')]: JSON.stringify(VALID_GIT),

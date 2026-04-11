@@ -808,3 +808,130 @@ describe('reporter — NO_CONVENTIONAL_COMMITS error formatting', () => {
     expect(output).not.toContain('Commits analyzed:');
   });
 });
+
+
+// --- operationId and totalDurationMs output tests (Task 8.4) ---
+
+describe('reporter — operationId and totalDurationMs in JSON output', () => {
+  const reporter = createReporter({ json: true });
+
+  test('reportSuccess JSON includes operationId when present', () => {
+    const result: PipelineResult = {
+      ...successResult,
+      operationId: '550e8400-e29b-41d4-a716-446655440000',
+    };
+    const output = reporter.reportSuccess(result);
+    const parsed = JSON.parse(output);
+    expect(parsed.operationId).toBe('550e8400-e29b-41d4-a716-446655440000');
+  });
+
+  test('reportSuccess JSON includes totalDurationMs when present', () => {
+    const result: PipelineResult = {
+      ...successResult,
+      totalDurationMs: 1234,
+    };
+    const output = reporter.reportSuccess(result);
+    const parsed = JSON.parse(output);
+    expect(parsed.totalDurationMs).toBe(1234);
+  });
+
+  test('reportSuccess JSON includes both operationId and totalDurationMs', () => {
+    const result: PipelineResult = {
+      ...successResult,
+      operationId: 'abc-def-123',
+      totalDurationMs: 5678,
+    };
+    const output = reporter.reportSuccess(result);
+    const parsed = JSON.parse(output);
+    expect(parsed.operationId).toBe('abc-def-123');
+    expect(parsed.totalDurationMs).toBe(5678);
+  });
+
+  test('reportSuccess JSON omits operationId when absent (backward compatibility)', () => {
+    const output = reporter.reportSuccess(successResult);
+    const parsed = JSON.parse(output);
+    expect(parsed.operationId).toBeUndefined();
+  });
+
+  test('reportSuccess JSON omits totalDurationMs when absent (backward compatibility)', () => {
+    const output = reporter.reportSuccess(successResult);
+    const parsed = JSON.parse(output);
+    expect(parsed.totalDurationMs).toBeUndefined();
+  });
+
+  test('reportDryRun JSON includes operationId when present', () => {
+    const plan: DryRunPlan = {
+      ...dryRunPlan,
+      operationId: '660e8400-e29b-41d4-a716-446655440000',
+    };
+    const output = reporter.reportDryRun(plan);
+    const parsed = JSON.parse(output);
+    expect(parsed.operationId).toBe('660e8400-e29b-41d4-a716-446655440000');
+  });
+
+  test('reportDryRun JSON omits operationId when absent (backward compatibility)', () => {
+    const output = reporter.reportDryRun(dryRunPlan);
+    const parsed = JSON.parse(output);
+    expect(parsed.operationId).toBeUndefined();
+  });
+
+  test('reportSuccess JSON totalDurationMs preserves zero value', () => {
+    const result: PipelineResult = {
+      ...successResult,
+      totalDurationMs: 0,
+    };
+    const output = reporter.reportSuccess(result);
+    const parsed = JSON.parse(output);
+    expect(parsed.totalDurationMs).toBe(0);
+  });
+});
+
+describe('reporter — operationId in human-readable verbose mode', () => {
+  test('verbose mode includes Operation ID in first line of reportSuccess', () => {
+    const reporter = createReporter({ json: false, verbose: true });
+    const result: PipelineResult = {
+      ...successResult,
+      operationId: '550e8400-e29b-41d4-a716-446655440000',
+    };
+    const output = reporter.reportSuccess(result);
+    const firstLine = output.split('\n')[0];
+    expect(firstLine).toContain('Operation ID: 550e8400-e29b-41d4-a716-446655440000');
+  });
+
+  test('verbose mode includes Operation ID in first line of reportDryRun', () => {
+    const reporter = createReporter({ json: false, verbose: true });
+    const plan: DryRunPlan = {
+      ...dryRunPlan,
+      operationId: '660e8400-e29b-41d4-a716-446655440000',
+    };
+    const output = reporter.reportDryRun(plan);
+    const firstLine = output.split('\n')[0];
+    expect(firstLine).toContain('Operation ID: 660e8400-e29b-41d4-a716-446655440000');
+  });
+
+  test('non-verbose mode does not include Operation ID in reportSuccess', () => {
+    const reporter = createReporter({ json: false });
+    const result: PipelineResult = {
+      ...successResult,
+      operationId: '550e8400-e29b-41d4-a716-446655440000',
+    };
+    const output = reporter.reportSuccess(result);
+    expect(output).not.toContain('Operation ID');
+  });
+
+  test('non-verbose mode does not include Operation ID in reportDryRun', () => {
+    const reporter = createReporter({ json: false });
+    const plan: DryRunPlan = {
+      ...dryRunPlan,
+      operationId: '660e8400-e29b-41d4-a716-446655440000',
+    };
+    const output = reporter.reportDryRun(plan);
+    expect(output).not.toContain('Operation ID');
+  });
+
+  test('verbose mode without operationId does not show Operation ID', () => {
+    const reporter = createReporter({ json: false, verbose: true });
+    const output = reporter.reportSuccess(successResult);
+    expect(output).not.toContain('Operation ID');
+  });
+});

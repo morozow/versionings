@@ -306,6 +306,21 @@
         }
       },
       "additionalProperties": false
+    },
+    "logLevel": {
+      "type": "string",
+      "enum": [
+        "debug",
+        "info",
+        "warn",
+        "error"
+      ],
+      "default": "warn"
+    },
+    "lockTimeoutMs": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 300000
     }
   },
   "additionalProperties": false

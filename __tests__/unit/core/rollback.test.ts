@@ -143,3 +143,77 @@ describe('BRANCH_SWITCHED rollback', () => {
     expect(executor.commands.every(cmd => !cmd.includes('git checkout'))).toBe(true);
   });
 });
+
+import type { StructuredLogger } from '../../../src/core/structured.logger';
+
+function createMockLogger(): StructuredLogger & { calls: Array<{ method: string; message: string; context?: Record<string, unknown> }> } {
+  const calls: Array<{ method: string; message: string; context?: Record<string, unknown> }> = [];
+  return {
+    debug(message: string, context?: Record<string, unknown>) { calls.push({ method: 'debug', message, context }); },
+    info(message: string, context?: Record<string, unknown>) { calls.push({ method: 'info', message, context }); },
+    warn(message: string, context?: Record<string, unknown>) { calls.push({ method: 'warn', message, context }); },
+    error(message: string, context?: Record<string, unknown>) { calls.push({ method: 'error', message, context }); },
+    calls,
+  };
+}
+
+describe('rollback manager with StructuredLogger', () => {
+  test('logs rollback start, each step, and completion on success', async () => {
+    const executor = createMockExecutor();
+    const logger = createMockLogger();
+    const mgr = createRollbackManager(executor, logger);
+    mgr.record({ type: STEP_TYPES.TAG_CREATED, meta: { name: 'v1.0.0' } });
+    mgr.record({ type: STEP_TYPES.COMMITTED, meta: {} });
+    await mgr.rollback();
+
+    expect(logger.calls[0]).toEqual({ method: 'info', message: 'Rollback started', context: { totalSteps: 2 } });
+    // Step 1 (COMMITTED — reversed index 1)
+    expect(logger.calls[1]).toEqual({ method: 'info', message: 'Rolling back step', context: { stepType: 'committed', index: 1 } });
+    expect(logger.calls[2]).toEqual({ method: 'info', message: 'Rollback step completed', context: { stepType: 'committed', result: 'success' } });
+    // Step 2 (TAG_CREATED — reversed index 0)
+    expect(logger.calls[3]).toEqual({ method: 'info', message: 'Rolling back step', context: { stepType: 'tag_created', index: 0 } });
+    expect(logger.calls[4]).toEqual({ method: 'info', message: 'Rollback step completed', context: { stepType: 'tag_created', result: 'success' } });
+    // Completion
+    expect(logger.calls[5]).toEqual({ method: 'info', message: 'Rollback completed', context: { success: true, totalSteps: 2, failedCount: 0 } });
+  });
+
+  test('logs warn on failed step', async () => {
+    const executor = createFailingExecutor('git branch -D');
+    const logger = createMockLogger();
+    const mgr = createRollbackManager(executor, logger);
+    mgr.record({ type: STEP_TYPES.BRANCH_CREATED, meta: { name: 'feat' } });
+    await mgr.rollback();
+
+    const warnCalls = logger.calls.filter(c => c.method === 'warn');
+    expect(warnCalls).toHaveLength(1);
+    expect(warnCalls[0].message).toBe('Rollback step failed');
+    expect(warnCalls[0].context).toMatchObject({ stepType: 'branch_created', result: 'failed' });
+
+    const completionCall = logger.calls[logger.calls.length - 1];
+    expect(completionCall).toEqual({ method: 'info', message: 'Rollback completed', context: { success: false, totalSteps: 1, failedCount: 1 } });
+  });
+
+  test('without logger — no errors, same behavior as before', async () => {
+    const executor = createMockExecutor();
+    const mgr = createRollbackManager(executor);
+    mgr.record({ type: STEP_TYPES.NPM_VERSION_BUMP, meta: {} });
+    const result = await mgr.rollback();
+    expect(result.success).toBe(true);
+    expect(executor.commands).toEqual(['git reset --hard']);
+  });
+
+  test('logger errors do not break rollback flow', async () => {
+    const executor = createMockExecutor();
+    const throwingLogger: StructuredLogger = {
+      debug() { throw new Error('logger boom'); },
+      info() { throw new Error('logger boom'); },
+      warn() { throw new Error('logger boom'); },
+      error() { throw new Error('logger boom'); },
+    };
+    const mgr = createRollbackManager(executor, throwingLogger);
+    mgr.record({ type: STEP_TYPES.TAG_CREATED, meta: { name: 'v1.0.0' } });
+    const result = await mgr.rollback();
+    expect(result.success).toBe(true);
+    expect(executor.commands).toEqual(['git tag -d v1.0.0']);
+  });
+});
