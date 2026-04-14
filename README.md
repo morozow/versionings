@@ -1,5 +1,11 @@
 # versionings
 
+[![npm](https://img.shields.io/npm/v/versionings?style=for-the-badge&logo=npm)](https://www.npmjs.com/package/versionings)
+[![License](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge&logo=opensourceinitiative)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%3E%3D18-brightgreen?style=for-the-badge&logo=nodedotjs)](https://nodejs.org)
+[![TypeScript](https://img.shields.io/badge/typescript-strict-blue?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org)
+[![Build](https://img.shields.io/badge/build-esbuild-yellow?style=for-the-badge&logo=esbuild)](https://esbuild.github.io)
+
 CLI tool that automates semantic versioning workflows for Git repositories. Bumps versions, creates branches and tags, and optionally pushes changes and opens pull requests on supported SCM platforms.
 
 ## Installation
