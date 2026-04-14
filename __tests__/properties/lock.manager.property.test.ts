@@ -112,7 +112,7 @@ const createLockManager = lockManagerMod.exports.createLockManager as
   typeof import('../../src/core/lock.manager').createLockManager;
 
 /** Arbitrary for lockTimeoutMs (positive integer, reasonable range) */
-const arbLockTimeoutMs = fc.integer({ min: 1, max: 600_000 });
+const arbLockTimeoutMs = fc.integer({ min: 100, max: 600_000 });
 
 /** Arbitrary for a positive time delta in ms */
 const arbPositiveDelta = fc.integer({ min: 50, max: 300_000 });
@@ -229,8 +229,11 @@ describe('Feature: operational-hardening, Property 8: Stale Detection по timeo
         arbPositiveDelta,
         (pid, operationId, command, hostname, lockTimeoutMs, delta) => {
           // createdAt is recent enough that timeout is NOT exceeded
+          // Use lockTimeoutMs / 2 as the age to guarantee the lock is well within the timeout
+          // window, avoiding race conditions with very small lockTimeoutMs values.
           const now = Date.now();
-          const createdAtMs = now - Math.max(0, lockTimeoutMs - delta); // guarantees now - createdAt < lockTimeoutMs
+          const age = Math.min(delta, Math.floor(lockTimeoutMs / 2));
+          const createdAtMs = now - age;
           const createdAt = new Date(createdAtMs).toISOString();
 
           const lockData: LockData = { pid, operationId, command, createdAt, hostname, ci: false };
@@ -350,8 +353,12 @@ describe('Feature: operational-hardening, Property 8: Stale Detection по timeo
         arbPositiveDelta,
         (pid, operationId, command, hostname, lockTimeoutMs, delta) => {
           // Non-stale case in CI — timeout NOT exceeded
+          // Use lockTimeoutMs / 2 as the age to guarantee the lock is well within the timeout
+          // window, avoiding race conditions with very small lockTimeoutMs values where
+          // Date.now() drift between test setup and isTimedOut() check could push age past timeout.
           const now = Date.now();
-          const createdAtMs = now - Math.max(0, lockTimeoutMs - delta);
+          const age = Math.min(delta, Math.floor(lockTimeoutMs / 2));
+          const createdAtMs = now - age;
           const createdAt = new Date(createdAtMs).toISOString();
 
           const lockData: LockData = { pid, operationId, command, createdAt, hostname, ci: true };

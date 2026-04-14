@@ -1,5 +1,5 @@
 const fs = require('fs');
-const { formatTable, formatPlain } = require('../utils/format');
+const { formatTable } = require('../utils/format');
 
 module.exports = {
   command: 'count <file>',

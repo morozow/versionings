@@ -1,0 +1,52 @@
+{
+  "env": {
+    "node": true,
+    "commonjs": true,
+    "es2020": true
+  },
+  "extends": "eslint:recommended",
+  "parserOptions": {
+    "ecmaVersion": 2020,
+    "sourceType": "module"
+  },
+  "rules": {
+    "no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_"
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": [
+        "07-electron-desktop-app/src/renderer/**/*.js"
+      ],
+      "env": {
+        "browser": true,
+        "node": false
+      }
+    },
+    {
+      "files": [
+        "09-next-webapp/**/*.js",
+        "09-next-webapp/**/*.jsx"
+      ],
+      "parserOptions": {
+        "ecmaFeatures": {
+          "jsx": true
+        }
+      },
+      "rules": {
+        "no-unused-vars": [
+          "error",
+          {
+            "argsIgnorePattern": "^_",
+            "varsIgnorePattern": "^_|^[A-Z]"
+          }
+        ]
+      }
+    }
+  ]
+}
