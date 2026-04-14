@@ -2,6 +2,7 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": true,
+    "emitDeclarationOnly": false,
     "types": [
       "jest",
       "node"
@@ -14,6 +15,6 @@
   ],
   "exclude": [
     "node_modules",
-    "dist"
+    "out"
   ]
 }

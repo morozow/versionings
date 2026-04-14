@@ -8,12 +8,13 @@
     "types": [
       "node"
     ],
-    "outDir": "./dist",
+    "outDir": "out/tsc",
     "rootDir": "src",
     "strict": true,
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "declaration": true,
+    "emitDeclarationOnly": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "moduleResolution": "node10",
@@ -24,7 +25,7 @@
   ],
   "exclude": [
     "node_modules",
-    "dist",
+    "out",
     "__tests__"
   ]
 }

@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2018-present Raman Marozau
-const esbuild = require('esbuild');
-esbuild.buildSync({
-  entryPoints: ['src/cli/version.ts'],
-  bundle: true,
-  platform: 'node',
-  target: 'node18',
-  format: 'cjs',
-  outdir: 'dist',
-  banner: { js: '#!/usr/bin/env node' },
-  external: ['yargs', 'open', 'js-yaml'],
+
+/**
+ * Backward-compatibility shim.
+ * Delegates to esbuild.config.mjs (the production build configuration).
+ *
+ * All E2E tests call `node build.js` in beforeAll — this shim ensures
+ * they continue to work without modification.
+ */
+const { execSync } = require('child_process');
+
+execSync(`${process.execPath} esbuild.config.mjs`, {
+  cwd: __dirname,
+  stdio: 'inherit',
 });

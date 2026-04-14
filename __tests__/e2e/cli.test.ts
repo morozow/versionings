@@ -17,7 +17,7 @@ import {
   git,
 } from '../helpers/repo-fixture';
 
-const CLI_PATH = path.resolve(__dirname, '../../dist/version.js');
+const CLI_PATH = path.resolve(__dirname, '../../out/dist/version.js');
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
 
 function runCli(args: string[] = [], opts: { cwd?: string; env?: Record<string, string> } = {}) {
