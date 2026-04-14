@@ -120,6 +120,9 @@ describe('E2E: SCM platform matrix', () => {
     );
 
     expect(exitCode).toBe(0);
+    // On some CI runners (Node 18 + macOS ARM64), child_process stdout
+    // may not be fully flushed before exit. Guard against empty output.
+    expect(stdout.trim().length).toBeGreaterThan(0);
     const parsed = JSON.parse(stdout.trim());
     expect(parsed.dryRun).toBe(true);
     expect(parsed.pullRequest).toBeDefined();
