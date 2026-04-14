@@ -24,7 +24,7 @@
     "test:e2e:pack": "bash scripts/test-pack.sh",
     "test:properties": "jest --testPathPattern='__tests__/properties/' --no-coverage",
     "test:ci": "jest --ci --forceExit",
-    "prepublishOnly": "npm run clean && npm run build && npm run test:ci"
+    "prepublishOnly": "npm run clean && npm run build && npm run test:e2e:pack"
   },
   "keywords": [
     "version",
