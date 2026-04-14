@@ -8,7 +8,8 @@ const ERROR_STATUS_MAP = {
   INVALID_TRANSITION: 422
 };
 
-function errorHandler(err, req, res, _next) {
+// eslint-disable-next-line no-unused-vars
+function errorHandler(err, req, res, next) {
   const code = err.code || 'INTERNAL_ERROR';
   const status = ERROR_STATUS_MAP[code] || 500;
   const message = status === 500 ? 'Internal server error' : err.message;

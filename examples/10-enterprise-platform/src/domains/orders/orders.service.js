@@ -1,4 +1,4 @@
-const { createOrder, ORDER_STATUSES, STATUS_TRANSITIONS } = require('./orders.model');
+const { createOrder, STATUS_TRANSITIONS } = require('./orders.model');
 const productsService = require('../products/products.service');
 
 const orders = new Map();

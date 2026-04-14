@@ -40,7 +40,7 @@ function register(data) {
 
   users.set(user.id, user);
 
-  const { passwordHash, ...safeUser } = user;
+  const { passwordHash: _hash, ...safeUser } = user;
   return safeUser;
 }
 
@@ -58,7 +58,7 @@ function getProfile(id) {
   if (!user) {
     throw Object.assign(new Error('User not found'), { code: 'NOT_FOUND' });
   }
-  const { passwordHash, ...safeUser } = user;
+  const { passwordHash: _hash, ...safeUser } = user;
   return safeUser;
 }
 
