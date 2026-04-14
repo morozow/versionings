@@ -16,9 +16,7 @@ import {
   cleanup,
   git,
 } from '../helpers/repo-fixture';
-
-const CLI_PATH = path.resolve(__dirname, '../../out/dist/index.js');
-const PROJECT_ROOT = path.resolve(__dirname, '../..');
+import { CLI_PATH, PROJECT_ROOT, IS_PACKED } from '../helpers/cli-path';
 
 function runCli(args: string[] = [], opts: { cwd?: string; env?: Record<string, string> } = {}) {
   const result = spawnSync(process.execPath, [CLI_PATH, ...args], {
@@ -37,13 +35,15 @@ function runCli(args: string[] = [], opts: { cwd?: string; env?: Record<string, 
 let dirs: string[] = [];
 
 beforeAll(() => {
-  const buildResult = spawnSync(process.execPath, ['build.js'], {
-    cwd: PROJECT_ROOT,
-    encoding: 'utf8',
-    timeout: 30000,
-  });
-  if (buildResult.status !== 0) {
-    throw new Error(`Build failed (exit ${buildResult.status}): ${buildResult.stderr}`);
+  if (!IS_PACKED) {
+    const buildResult = spawnSync(process.execPath, ['build.js'], {
+      cwd: PROJECT_ROOT,
+      encoding: 'utf8',
+      timeout: 30000,
+    });
+    if (buildResult.status !== 0) {
+      throw new Error(`Build failed (exit ${buildResult.status}): ${buildResult.stderr}`);
+    }
   }
   expect(fs.existsSync(CLI_PATH)).toBe(true);
 });

@@ -18,9 +18,7 @@ import {
   cleanup,
   git,
 } from '../helpers/repo-fixture';
-
-const CLI_PATH = path.resolve(__dirname, '../../out/dist/index.js');
-const PROJECT_ROOT = path.resolve(__dirname, '../..');
+import { CLI_PATH, PROJECT_ROOT, IS_PACKED } from '../helpers/cli-path';
 
 interface RunResult {
   stdout: string;
@@ -49,11 +47,13 @@ let dirs: string[] = [];
 
 beforeAll(() => {
   // Build dist/version.js before running E2E tests
-  execSync(`${process.execPath} build.js`, {
-    cwd: PROJECT_ROOT,
-    encoding: 'utf8',
-    timeout: 30000,
-  });
+  if (!IS_PACKED) {
+    execSync(`${process.execPath} build.js`, {
+      cwd: PROJECT_ROOT,
+      encoding: 'utf8',
+      timeout: 30000,
+    });
+  }
   expect(fs.existsSync(CLI_PATH)).toBe(true);
 });
 
