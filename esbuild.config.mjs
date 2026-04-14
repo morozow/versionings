@@ -32,7 +32,7 @@ const targets = {
   cli: {
     label: 'CLI Bundle',
     entryPoints: ['src/cli/version.ts'],
-    outfile: 'out/dist/version.js',
+    outfile: 'out/dist/index.js',
     bundle: true,
     platform: 'node',
     target: ['node18'],

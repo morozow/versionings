@@ -2,13 +2,13 @@
   "name": "versionings",
   "version": "0.1.0",
   "description": "Versioning automation tool",
-  "main": "out/dist/version.js",
+  "main": "out/dist/index.js",
   "bin": {
-    "versionings": "./out/dist/version.js"
+    "versionings": "./out/dist/index.js"
   },
-  "types": "out/tsc/cli/version.d.ts",
+  "types": "out/tsc/index.d.ts",
   "scripts": {
-    "version:next": "node ./out/dist/version.js",
+    "version:next": "node ./out/dist/index.js",
     "build": "node esbuild.config.mjs && tsc",
     "test": "jest"
   },
