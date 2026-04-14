@@ -250,6 +250,85 @@ versionings changelog --from=v1.0.0 --to=HEAD
 
 See the [Changelog Format Guide](./changelog-format-guide.md) for full configuration options.
 
+## P4 → P5: Operational Hardening
+
+P5 added structured logging, operation IDs, actor metadata, action trace, and concurrency lock.
+
+### What Changed
+
+- **Structured logging**: All log output is now JSON-formatted and directed to stderr. The `--verbose` flag enables `debug`-level logging. A configurable `logLevel` field controls the minimum level.
+- **Operation ID**: Every CLI invocation generates a UUID v4 that appears in all log messages and audit entries.
+- **Actor metadata**: Git user name, email, hostname, and CI actor are captured and stored in the audit log.
+- **Action trace**: Each pipeline step is timed. Trace data is stored in the audit log and `totalDurationMs` is included in JSON output.
+- **Audit log v2**: Operation log entries now use `schemaVersion: 2` with additional fields: `operationId`, `actor`, `trace`, `environment`, `command`. Entries with `schemaVersion: 1` are read without errors.
+- **Concurrency lock**: A lock file (`.versionings/lock`) prevents parallel releases. Stale locks are auto-detected via PID check (local) or timeout (CI).
+- **New configuration fields**:
+  - `logLevel` — log verbosity: `debug`, `info`, `warn` (default), `error`
+  - `lockTimeoutMs` — lock timeout in milliseconds (default: `300000`)
+
+### Migration Steps
+
+1. No breaking changes. Existing configurations work without modification.
+
+2. To enable structured logging, set `logLevel` in your configuration:
+
+```json
+{
+  "logLevel": "info"
+}
+```
+
+3. To adjust lock timeout for long-running CI pipelines:
+
+```json
+{
+  "lockTimeoutMs": 600000
+}
+```
+
+4. Add `.versionings/` to your `.gitignore` if not already present:
+
+```text
+.versionings/
+```
+
+5. Validate the updated configuration:
+
+```bash
+versionings validate --json
+```
+
+See the [Operational Hardening Guide](./operational-hardening-guide.md) for full details.
+
+## P5 → P6: Project Restructure
+
+P6 reorganized the source code from a flat root structure into `src/` with domain subdirectories. This is a developer-facing change only — CLI behavior is unchanged.
+
+### What Changed
+
+- **Source structure**: All TypeScript source files moved from the project root into `src/` with 7 domain directories: `cli/`, `core/`, `config/`, `scm/`, `branching/`, `versioning/`, `utils/`.
+- **Test structure**: Unit and property tests reorganized into mirrored domain subdirectories within `__tests__/unit/` and `__tests__/properties/`.
+- **Build output**: Changed from `dist/version.js` to `out/dist/index.js`. The `bin` entry in `package.json` updated accordingly.
+- **TypeScript config**: `rootDir` changed to `src`, `include` changed to `src/**/*.ts`.
+
+### Migration Steps (for contributors)
+
+1. Update any local scripts that reference source files by path.
+
+2. If you have custom IDE configurations pointing to root-level `.ts` files, update them to `src/`.
+
+3. Pull the latest changes and run:
+
+```bash
+npm install
+npm run build
+npm test
+```
+
+### Migration Steps (for users)
+
+No action required. The CLI binary, configuration format, and all commands remain identical.
+
 ## Backward Compatibility
 
 Versionings maintains backward compatibility across all phase transitions:
@@ -284,6 +363,8 @@ Exit codes are additive. Codes `0`–`7` from P0 retain their original meaning a
 | P1    | 0–9       | 8 (`NO_OPERATION`), 9 (`USER_CANCELLED`) |
 | P3    | 0–10      | 10 (`POLICY_VIOLATION`) |
 | P4    | 0–11      | 11 (`NO_CONVENTIONAL_COMMITS`) |
+| P5    | 0–11      | — (no new exit codes) |
+| P6    | 0–11      | — (no new exit codes) |
 
 CI scripts that only check for exit code `0` (success) vs non-zero (failure) continue to work without changes.
 

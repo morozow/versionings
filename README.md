@@ -58,6 +58,9 @@ See the [CLI Reference](docs/cli-reference.md) for full details on each command,
 - Dry-run with `plan` command
 - Automatic rollback on failure
 - JSON output for CI (`--json`)
+- Structured JSON logging with operation IDs and actor metadata
+- Concurrency lock to prevent parallel releases
+- Action trace with step-level timing
 
 See the [documentation](docs/index.md) for details on each feature.
 
@@ -92,6 +95,7 @@ Full documentation is available in the [docs/](docs/index.md) directory:
 - [SCM Provider Guide](docs/scm-provider-guide.md) — Platform setup and PR/MR automation
 - [CI/CD Examples](docs/ci-examples.md) — GitHub Actions, GitLab CI, Azure Pipelines, Bitbucket Pipelines
 - [Changelog Format Guide](docs/changelog-format-guide.md) — Conventional Commits and changelog configuration
+- [Operational Hardening Guide](docs/operational-hardening-guide.md) — Structured logging, operation IDs, and concurrency lock
 - [Migration Guide](docs/migration-guide.md) — Upgrading between versions
 
 ## Development
@@ -105,16 +109,60 @@ Full documentation is available in the [docs/](docs/index.md) directory:
 
 ```bash
 npm install          # Install dependencies
-npm run build        # Bundle to dist/version.js via esbuild
+npm run build        # Bundle via esbuild + emit type declarations
 npm test             # Run all tests (unit, property, integration, e2e)
+npm run typecheck    # Type-check without emitting
+npm run lint         # Lint all source and test files
+```
+
+### Project Structure
+
+```text
+src/
+├── cli/               # CLI entry point, command router, subcommands
+│   ├── version.ts     # Entry point (compiles to out/dist/index.js)
+│   ├── command.router.ts
+│   ├── interaction.manager.ts
+│   └── commands/      # init, validate, plan, release, rollback, doctor, changelog
+├── core/              # Pipeline, executor, errors, rollback, reporter
+│   ├── pipeline.ts    # Workflow orchestration
+│   ├── executor.ts    # Shell command execution (Promise-based, DI)
+│   ├── errors.ts      # Exit codes (0–11) and VersioningsError
+│   ├── rollback.ts    # Rollback manager
+│   ├── reporter.ts    # JSON / human-readable output
+│   ├── structured.logger.ts  # Structured JSON logging
+│   ├── lock.manager.ts       # Concurrency lock
+│   ├── action.tracer.ts      # Step timing trace
+│   └── actor.resolver.ts     # Git user / CI actor metadata
+├── config/            # Configuration loading, merging, validation
+├── scm/               # SCM provider abstraction and PR/MR creation
+│   ├── providers/     # GitHub, GitLab, Bitbucket, Azure DevOps
+│   └── ...
+├── branching/         # Branching strategies and policy checker
+│   ├── strategies/    # default, trunk-based, git-flow, release, hotfix, maintenance
+│   └── ...
+├── versioning/        # Conventional commits, auto-bump, changelog
+└── utils/             # Shared utilities (ANSI colors, helpers)
 ```
 
 ### Test Structure
 
 ```text
 __tests__/
-├── unit/              # Module-level tests with mocks
+├── unit/              # Module-level tests with mocks (mirrored by domain)
+│   ├── cli/
+│   ├── core/
+│   ├── config/
+│   ├── scm/
+│   ├── branching/
+│   ├── versioning/
+│   └── utils/
 ├── properties/        # Property-based tests (fast-check, 100+ iterations each)
+│   ├── core/
+│   ├── config/
+│   ├── scm/
+│   ├── branching/
+│   └── versioning/
 ├── integration/       # Full pipeline with real git repos (no mocks)
 ├── e2e/               # CLI as child process with real git repos
 └── helpers/           # Test utilities (repo fixture creation)

@@ -1,7 +1,5 @@
 # Versionings Documentation
 
-Documentation for Versionings v0.1.0
-
 Versionings is a CLI tool that automates semantic versioning workflows for Git repositories. It bumps versions, creates branches and tags, and optionally opens pull requests on supported SCM platforms.
 
 ## Getting Started
@@ -20,6 +18,7 @@ Versionings is a CLI tool that automates semantic versioning workflows for Git r
 - [SCM Provider Guide](./scm-provider-guide.md) — Platform setup for GitHub, GitLab, Bitbucket, and Azure DevOps
 - [CI/CD Examples](./ci-examples.md) — Ready-to-use CI/CD configurations for four platforms
 - [Changelog Format Guide](./changelog-format-guide.md) — Conventional Commits, bump policy, and changelog templates
+- [Operational Hardening Guide](./operational-hardening-guide.md) — Structured logging, operation IDs, actor metadata, and concurrency lock
 
 ## Operations
 
