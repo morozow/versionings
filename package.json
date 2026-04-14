@@ -23,8 +23,7 @@
     "test:e2e": "jest --testPathPattern='__tests__/e2e/' --no-coverage",
     "test:e2e:pack": "bash scripts/test-pack.sh",
     "test:properties": "jest --testPathPattern='__tests__/properties/' --no-coverage",
-    "test:ci": "jest --ci --forceExit",
-    "prepare": "npm run clean && npm run build && bash scripts/test-pack.sh --no-force"
+    "test:ci": "jest --ci --forceExit"
   },
   "keywords": [
     "version",
