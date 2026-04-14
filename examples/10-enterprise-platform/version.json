@@ -1,0 +1,69 @@
+{
+  "git": {
+    "platform": "github",
+    "url": "https://github.com/your-org/10-enterprise-platform.git",
+    "branching": {
+      "strategy": "git-flow",
+      "mainBranch": "main",
+      "developBranch": "develop",
+      "branchTemplate": "release/v{version}-{comment}",
+      "tagTemplate": "v{version}"
+    },
+    "pr": {
+      "target": "main",
+      "reviewers": [
+        "tech-lead",
+        "security-reviewer",
+        "qa-lead"
+      ],
+      "labels": [
+        "release",
+        "enterprise",
+        "automated"
+      ],
+      "draft": false,
+      "template": ".github/PULL_REQUEST_TEMPLATE.md",
+      "milestone": "Q1-2025",
+      "linkedIssues": [
+        "#100",
+        "#200",
+        "#300"
+      ]
+    }
+  },
+  "conventionalCommits": {
+    "enabled": true,
+    "types": {
+      "feat": "minor",
+      "fix": "patch",
+      "perf": "patch",
+      "revert": "patch",
+      "refactor": "patch",
+      "deps": "patch",
+      "security": "patch"
+    },
+    "fallbackBump": "patch"
+  },
+  "changelog": {
+    "file": "CHANGELOG.md",
+    "groupTitles": {
+      "feat": "✨ Features",
+      "fix": "🐛 Bug Fixes",
+      "perf": "⚡ Performance",
+      "refactor": "♻️ Refactoring",
+      "deps": "📦 Dependencies",
+      "security": "🔒 Security"
+    },
+    "excludeTypes": [
+      "chore",
+      "ci",
+      "test",
+      "build",
+      "style",
+      "docs"
+    ],
+    "includeNonConventional": false
+  },
+  "logLevel": "info",
+  "lockTimeoutMs": 600000
+}

@@ -1,0 +1,24 @@
+{
+  "name": "03-nestjs-microservice",
+  "version": "1.0.0",
+  "description": "NestJS microservice — git-flow workflow with GitLab MR automation",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/main.js",
+    "validate": "versionings validate",
+    "plan": "versionings plan --semver=minor --branch=release",
+    "release": "versionings release --semver=minor --branch=release --push"
+  },
+  "dependencies": {
+    "@nestjs/core": "^10.4.0",
+    "@nestjs/common": "^10.4.0",
+    "@nestjs/platform-express": "^10.4.0",
+    "reflect-metadata": "^0.2.0",
+    "rxjs": "^7.8.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "versionings": "^0.1.0"
+  }
+}

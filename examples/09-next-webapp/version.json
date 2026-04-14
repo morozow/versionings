@@ -1,0 +1,21 @@
+{
+  "git": {
+    "platform": "bitbucket-server",
+    "url": "https://bitbucket.example.com/scm/proj/09-next-webapp.git",
+    "apiUrl": "https://bitbucket.example.com/rest/api/1.0",
+    "branching": {
+      "strategy": "release-branch"
+    },
+    "pr": {
+      "target": "main",
+      "milestone": "v2.0",
+      "linkedIssues": [
+        "PROJ-101",
+        "PROJ-102"
+      ]
+    }
+  },
+  "changelog": {
+    "file": "CHANGELOG.md"
+  }
+}

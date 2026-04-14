@@ -1,0 +1,13 @@
+image: node:18
+
+pipelines:
+  branches:
+    main:
+      - step:
+          name: Validate and Release
+          script:
+            - npm install
+            - npx versionings validate --json
+            - npx versionings release --semver=patch --branch=ci-release --push --ci --json
+          caches:
+            - node

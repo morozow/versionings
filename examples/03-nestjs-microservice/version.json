@@ -1,0 +1,22 @@
+{
+  "git": {
+    "platform": "gitlab",
+    "url": "https://gitlab.com/your-org/03-nestjs-microservice.git",
+    "branching": {
+      "strategy": "git-flow",
+      "mainBranch": "main",
+      "developBranch": "develop"
+    },
+    "pr": {
+      "target": "main",
+      "reviewers": [
+        "lead-dev",
+        "qa-engineer"
+      ],
+      "labels": [
+        "release",
+        "microservice"
+      ]
+    }
+  }
+}

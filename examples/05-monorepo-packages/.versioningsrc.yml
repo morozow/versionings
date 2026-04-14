@@ -1,0 +1,7 @@
+git:
+  platform: bitbucket
+  url: https://bitbucket.org/your-workspace/05-monorepo-packages.git
+  branching:
+    strategy: default
+  pr:
+    target: main

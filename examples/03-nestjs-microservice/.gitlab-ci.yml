@@ -1,0 +1,23 @@
+image: node:18
+
+stages:
+  - validate
+  - release
+
+validate:
+  stage: validate
+  script:
+    - npm install
+    - npx versionings validate --json
+  variables:
+    GITLAB_TOKEN: $GITLAB_TOKEN
+
+release:
+  stage: release
+  script:
+    - npm install
+    - npx versionings release --semver=minor --branch=ci-release --push --ci --json
+  variables:
+    GITLAB_TOKEN: $GITLAB_TOKEN
+  only:
+    - develop

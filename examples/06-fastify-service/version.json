@@ -1,0 +1,10 @@
+{
+  "git": {
+    "platform": "azure-devops",
+    "url": "https://dev.azure.com/your-org/project/_git/06-fastify-service",
+    "branching": {
+      "strategy": "trunk-based",
+      "mainBranch": "main"
+    }
+  }
+}

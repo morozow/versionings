@@ -1,0 +1,24 @@
+{
+  "name": "10-enterprise-platform",
+  "version": "1.0.0",
+  "description": "Enterprise DDD platform — all advanced versionings features",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "validate": "versionings validate",
+    "validate:strict": "versionings validate --strict",
+    "plan": "versionings plan --semver=auto --branch=release",
+    "release": "versionings release --semver=auto --branch=release --push",
+    "release:ci": "versionings release --semver=auto --branch=release --push --ci --json",
+    "config": "versionings release --print-config",
+    "rollback": "versionings rollback",
+    "doctor": "versionings doctor",
+    "changelog": "versionings changelog --output CHANGELOG.md"
+  },
+  "dependencies": {
+    "express": "^4.21.0"
+  },
+  "devDependencies": {
+    "versionings": "^0.1.0"
+  }
+}

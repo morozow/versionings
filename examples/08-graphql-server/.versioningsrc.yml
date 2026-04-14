@@ -1,0 +1,9 @@
+git:
+  platform: gitlab
+  url: https://gitlab.example.com/your-org/08-graphql-server.git
+  apiUrl: https://gitlab.example.com/api/v4
+  branching:
+    strategy: maintenance
+    mainBranch: main
+  pr:
+    target: main

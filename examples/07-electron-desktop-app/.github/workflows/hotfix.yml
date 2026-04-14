@@ -1,0 +1,27 @@
+name: Hotfix Release
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  hotfix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - run: npm install
+
+      - name: Validate
+        run: npx versionings validate
+
+      - name: Hotfix Release
+        run: npx versionings release --semver=patch --branch=hotfix --push --ci --json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
