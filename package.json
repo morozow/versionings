@@ -1,20 +1,41 @@
 {
   "name": "versionings",
   "version": "0.1.0",
-  "description": "Versioning automation tool",
+  "description": "Semantic versioning automation CLI for Git repositories — bumps versions, creates branches and tags, opens pull requests.",
   "main": "out/dist/index.js",
   "bin": {
     "versionings": "./out/dist/index.js"
   },
   "types": "out/tsc/index.d.ts",
+  "files": [
+    "out/",
+    "LICENSE",
+    "README.md"
+  ],
   "scripts": {
-    "version:next": "node ./out/dist/index.js",
+    "clean": "rm -rf out",
     "build": "node esbuild.config.mjs && tsc",
-    "test": "jest"
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint 'src/**/*.ts' '__tests__/**/*.ts'",
+    "test": "jest --no-coverage --forceExit",
+    "test:unit": "jest --testPathPattern='__tests__/unit/' --no-coverage",
+    "test:integration": "jest --testPathPattern='__tests__/integration/' --no-coverage",
+    "test:e2e": "jest --testPathPattern='__tests__/e2e/' --no-coverage",
+    "test:properties": "jest --testPathPattern='__tests__/properties/' --no-coverage",
+    "test:ci": "jest --ci --forceExit",
+    "prepublishOnly": "npm run clean && npm run build && npm run test:ci"
   },
   "keywords": [
     "version",
-    "versioning"
+    "versioning",
+    "semver",
+    "semantic-versioning",
+    "git",
+    "release",
+    "changelog",
+    "branching",
+    "cli",
+    "automation"
   ],
   "author": "Raman Marozau <engineer.morozov@gmail.com>",
   "license": "MIT",
