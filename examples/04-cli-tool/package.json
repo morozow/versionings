@@ -15,6 +15,6 @@
     "yargs": "^17.7.0"
   },
   "devDependencies": {
-    "versionings": "^0.1.0"
+    "versionings": "^1.0.0"
   }
 }

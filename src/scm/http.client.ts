@@ -37,7 +37,7 @@ export interface HttpClient {
 }
 
 const DEFAULT_TIMEOUT = 30_000;
-const VERSION = '0.1.0';
+const VERSION = '1.0.0';
 const DEFAULT_USER_AGENT = `versionings/${VERSION}`;
 
 /**

@@ -12,6 +12,6 @@
     "release": "versionings release --semver=patch --branch=release --push"
   },
   "devDependencies": {
-    "versionings": "^0.1.0"
+    "versionings": "^1.0.0"
   }
 }

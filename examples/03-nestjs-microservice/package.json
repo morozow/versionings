@@ -19,6 +19,6 @@
   },
   "devDependencies": {
     "typescript": "^5.5.0",
-    "versionings": "^0.1.0"
+    "versionings": "^1.0.0"
   }
 }
