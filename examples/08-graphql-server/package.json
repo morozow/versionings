@@ -1,0 +1,19 @@
+{
+  "name": "08-graphql-server",
+  "version": "2.1.0",
+  "description": "Apollo GraphQL server — maintenance strategy, self-hosted GitLab",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "validate": "versionings validate",
+    "plan": "versionings plan --semver=patch --branch=maintenance",
+    "release": "versionings release --semver=patch --branch=maintenance --push"
+  },
+  "dependencies": {
+    "@apollo/server": "^4.11.0",
+    "graphql": "^16.9.0"
+  },
+  "devDependencies": {
+    "versionings": "^0.1.0"
+  }
+}

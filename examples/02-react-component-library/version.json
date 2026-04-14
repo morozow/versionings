@@ -1,0 +1,40 @@
+{
+  "git": {
+    "platform": "github",
+    "url": "https://github.com/your-org/02-react-component-library.git",
+    "branching": {
+      "strategy": "trunk-based",
+      "mainBranch": "main"
+    }
+  },
+  "conventionalCommits": {
+    "enabled": true,
+    "types": {
+      "feat": "minor",
+      "fix": "patch",
+      "perf": "patch",
+      "revert": "patch",
+      "refactor": "patch",
+      "deps": "patch"
+    },
+    "fallbackBump": "patch"
+  },
+  "changelog": {
+    "file": "CHANGELOG.md",
+    "groupTitles": {
+      "feat": "✨ Features",
+      "fix": "🐛 Bug Fixes",
+      "perf": "⚡ Performance",
+      "refactor": "♻️ Refactoring",
+      "deps": "📦 Dependencies"
+    },
+    "excludeTypes": [
+      "chore",
+      "ci",
+      "test",
+      "build",
+      "style",
+      "docs"
+    ]
+  }
+}

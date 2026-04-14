@@ -1,19 +1,42 @@
 {
   "name": "versionings",
   "version": "0.1.0",
-  "description": "Versioning automation tool",
-  "main": "dist/version.js",
+  "description": "Semantic versioning automation CLI for Git repositories — bumps versions, creates branches and tags, opens pull requests.",
+  "main": "out/dist/index.js",
   "bin": {
-    "versionings": "./dist/version.js"
+    "versionings": "./out/dist/index.js"
   },
+  "types": "out/tsc/index.d.ts",
+  "files": [
+    "out/",
+    "LICENSE",
+    "README.md"
+  ],
   "scripts": {
-    "version:next": "node ./dist/version.js",
-    "build": "node build.js",
-    "test": "jest"
+    "clean": "rm -rf out",
+    "build": "node esbuild.config.mjs && tsc",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint 'src/**/*.ts' '__tests__/**/*.ts'",
+    "test": "jest --no-coverage --forceExit",
+    "test:unit": "jest --testPathPattern='__tests__/unit/' --no-coverage",
+    "test:integration": "jest --testPathPattern='__tests__/integration/' --no-coverage",
+    "test:e2e": "jest --testPathPattern='__tests__/e2e/' --no-coverage",
+    "test:e2e:pack": "bash scripts/test-pack.sh",
+    "test:properties": "jest --testPathPattern='__tests__/properties/' --no-coverage",
+    "test:ci": "jest --ci --forceExit",
+    "prepublishOnly": "npm run clean && npm run build && npm run test:ci"
   },
   "keywords": [
     "version",
-    "versioning"
+    "versioning",
+    "semver",
+    "semantic-versioning",
+    "git",
+    "release",
+    "changelog",
+    "branching",
+    "cli",
+    "automation"
   ],
   "author": "Raman Marozau <engineer.morozov@gmail.com>",
   "license": "MIT",
@@ -27,11 +50,13 @@
   },
   "dependencies": {
     "ajv": "^8.17.1",
+    "js-yaml": "^4.1.0",
     "open": "^8.4.2",
     "yargs": "^17.7.2"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^25.5.0",
     "esbuild": "^0.27.4",
     "esbuild-jest": "^0.5.0",

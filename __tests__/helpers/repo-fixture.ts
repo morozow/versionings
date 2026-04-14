@@ -152,3 +152,45 @@ export function cleanup(dirs: string[]): void {
     }
   }
 }
+
+export interface StrategyFixtureOpts extends RepoFixtureOpts {
+  strategy: string;
+  platform?: string;
+  apiUrl?: string;
+  branchingConfig?: Record<string, unknown>;
+}
+
+/**
+ * Create a repo fixture pre-configured with a branching strategy.
+ *
+ * Calls createRepoFixture(), then overwrites version.json with the
+ * specified strategy/platform/apiUrl/branchingConfig and commits the change.
+ */
+export function createRepoFixtureWithStrategy(opts: StrategyFixtureOpts): RepoFixture {
+  const { strategy, platform = 'github', apiUrl, branchingConfig, ...baseOpts } = opts;
+  const fixture = createRepoFixture(baseOpts);
+
+  const gitConfig: Record<string, unknown> = {
+    platform,
+    url: fixture.remoteUrl,
+    branching: {
+      ...(branchingConfig || {}),
+      strategy,
+    },
+  };
+
+  if (apiUrl) {
+    gitConfig.apiUrl = apiUrl;
+  }
+
+  const versionJson = { git: gitConfig };
+  fs.writeFileSync(
+    path.join(fixture.repoDir, 'version.json'),
+    JSON.stringify(versionJson, null, 2) + '\n',
+  );
+  git(fixture.repoDir, 'add version.json');
+  git(fixture.repoDir, 'commit -m "configure strategy fixture"');
+  git(fixture.repoDir, 'push origin main');
+
+  return fixture;
+}

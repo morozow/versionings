@@ -1,0 +1,26 @@
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '18.x'
+    displayName: 'Setup Node.js'
+
+  - script: npm install
+    displayName: 'Install dependencies'
+
+  - script: npx versionings validate --ci --json
+    displayName: 'Validate configuration'
+    env:
+      AZURE_DEVOPS_TOKEN: $(AZURE_DEVOPS_TOKEN)
+
+  - script: npx versionings release --semver=patch --branch=ci-release --push --ci --json
+    displayName: 'Release'
+    env:
+      AZURE_DEVOPS_TOKEN: $(AZURE_DEVOPS_TOKEN)

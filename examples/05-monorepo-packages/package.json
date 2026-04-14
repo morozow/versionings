@@ -1,0 +1,17 @@
+{
+  "name": "05-monorepo-packages",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Monorepo — Bitbucket, YAML configuration, config hierarchy",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "validate": "versionings validate",
+    "plan": "versionings plan --semver=patch --branch=release",
+    "release": "versionings release --semver=patch --branch=release --push"
+  },
+  "devDependencies": {
+    "versionings": "^0.1.0"
+  }
+}

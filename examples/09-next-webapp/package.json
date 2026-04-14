@@ -1,0 +1,21 @@
+{
+  "name": "09-next-webapp",
+  "version": "1.0.0",
+  "description": "Next.js app — Bitbucket Server, release-branch, milestone + linkedIssues",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "validate": "versionings validate",
+    "plan": "versionings plan --semver=minor --branch=release",
+    "release": "versionings release --semver=minor --branch=release --push"
+  },
+  "dependencies": {
+    "next": "^14.2.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0"
+  },
+  "devDependencies": {
+    "versionings": "^0.1.0"
+  }
+}

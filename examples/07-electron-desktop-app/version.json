@@ -1,0 +1,11 @@
+{
+  "git": {
+    "platform": "github-enterprise",
+    "url": "https://github.example.com/your-org/07-electron-desktop-app.git",
+    "apiUrl": "https://github.example.com/api/v3",
+    "branching": {
+      "strategy": "hotfix",
+      "mainBranch": "main"
+    }
+  }
+}

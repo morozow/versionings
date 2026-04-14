@@ -1,0 +1,18 @@
+{
+  "name": "06-fastify-service",
+  "version": "1.0.0",
+  "description": "Fastify HTTP service — Azure DevOps, trunk-based, --ci --json",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "validate": "versionings validate --ci --json",
+    "plan": "versionings plan --semver=patch --branch=release --ci --json",
+    "release": "versionings release --semver=patch --branch=release --push --ci --json"
+  },
+  "dependencies": {
+    "fastify": "^5.0.0"
+  },
+  "devDependencies": {
+    "versionings": "^0.1.0"
+  }
+}

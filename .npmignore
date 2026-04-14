@@ -6,3 +6,12 @@ node_modules/
 
 # Version project configuration
 version.json
+src/
+__tests__
+
+# Build config (not needed in published package)
+esbuild.config.mjs
+tsconfig.json
+tsconfig.test.json
+build.js
+sandbox/

@@ -1,0 +1,430 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2018-present Raman Marozau
+
+import { loadConfig, ConfigLoadResult } from '../../config/config.loader';
+import { Executor } from '../../core/executor';
+import { Reporter, ValidateResult } from '../../core/reporter';
+import { ConfigProvenance } from '../../config/config.merger';
+import { VersioningsError, EXIT_CODES } from '../../core/errors';
+import { DEFAULT_BUMP_POLICY } from '../../versioning/commit.analyzer';
+import { DEFAULT_GROUP_TITLES } from '../../versioning/changelog.generator';
+
+// ---------------------------------------------------------------------------
+// Public interfaces
+// ---------------------------------------------------------------------------
+
+export interface ValidateCommandDeps {
+  configLoader: typeof loadConfig;
+  executor: Executor;
+  reporter: Reporter;
+  cwd: string;
+  env: Record<string, string | undefined>;
+  stdout: NodeJS.WritableStream;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Normalize a git URL for comparison: strip trailing .git, trailing slash,
+ * and lowercase the result.
+ */
+function normalizeUrl(url: string): string {
+  return url
+    .trim()
+    .replace(/\.git$/, '')
+    .replace(/\/+$/, '')
+    .toLowerCase();
+}
+
+// ---------------------------------------------------------------------------
+// Individual checks
+// ---------------------------------------------------------------------------
+
+async function checkConfig(
+  deps: ValidateCommandDeps,
+  strict: boolean,
+): Promise<{
+  loadResult: ConfigLoadResult | null;
+  checks: ValidateResult['checks'];
+}> {
+  const checks: ValidateResult['checks'] = [];
+  let loadResult: ConfigLoadResult | null = null;
+
+  try {
+    loadResult = deps.configLoader({
+      cwd: deps.cwd,
+      env: deps.env,
+      strict,
+    });
+
+    // Check if any user-provided source exists (not just defaults)
+    const userSources = loadResult.sources.filter((s) => s.name !== 'defaults');
+    if (userSources.length === 0) {
+      checks.push({
+        name: 'config_exists',
+        status: 'warn',
+        details: 'No user-provided configuration sources found. Using defaults only.',
+      });
+    } else {
+      const sourceNames = userSources.map((s) => s.name).join(', ');
+      checks.push({
+        name: 'config_exists',
+        status: 'pass',
+        details: `Configuration loaded from: ${sourceNames}`,
+      });
+    }
+
+    checks.push({
+      name: 'config_valid',
+      status: 'pass',
+      details: 'Configuration passes schema validation.',
+    });
+
+    // Report warnings from loader (e.g. multiple RC files)
+    for (const w of loadResult.warnings) {
+      checks.push({
+        name: 'config_warning',
+        status: 'warn',
+        details: w,
+      });
+    }
+  } catch (err: any) {
+    checks.push({
+      name: 'config_exists',
+      status: 'fail',
+      details: err instanceof VersioningsError
+        ? err.message
+        : `Failed to load configuration: ${String(err.message || err)}`,
+    });
+  }
+
+  return { loadResult, checks };
+}
+
+async function checkGitRepo(
+  executor: Executor,
+): Promise<{ accessible: boolean; check: ValidateResult['checks'][0] }> {
+  try {
+    await executor.run('git rev-parse --is-inside-work-tree');
+    return {
+      accessible: true,
+      check: { name: 'git_repo', status: 'pass', details: 'Git repository is accessible.' },
+    };
+  } catch {
+    return {
+      accessible: false,
+      check: { name: 'git_repo', status: 'fail', details: 'Not inside a git repository.' },
+    };
+  }
+}
+
+async function checkGitRemote(
+  executor: Executor,
+  configUrl: string | undefined,
+): Promise<ValidateResult['checks'][0]> {
+  if (!configUrl) {
+    return {
+      name: 'git_remote',
+      status: 'warn',
+      details: 'git.url is not configured. Cannot verify remote match.',
+    };
+  }
+
+  try {
+    const result = await executor.run('git remote get-url origin');
+    const actualUrl = result.stdout.trim();
+
+    if (normalizeUrl(actualUrl) === normalizeUrl(configUrl)) {
+      return {
+        name: 'git_remote',
+        status: 'pass',
+        details: `Git remote "origin" matches configured URL.`,
+      };
+    }
+
+    return {
+      name: 'git_remote',
+      status: 'fail',
+      details: `Git remote "origin" (${actualUrl}) does not match configured git.url (${configUrl}).`,
+    };
+  } catch {
+    return {
+      name: 'git_remote',
+      status: 'warn',
+      details: 'Cannot read git remote "origin". Remote may not be configured.',
+    };
+  }
+}
+
+function checkBranchingStrategy(
+  config: any,
+): ValidateResult['checks'][0] {
+  const branching = config?.git?.branching;
+  if (!branching || !branching.strategy || branching.strategy === 'default') {
+    return {
+      name: 'branching_strategy',
+      status: 'pass',
+      details: 'Branching strategy: default (backward compatible)',
+    };
+  }
+
+  const validStrategies = ['default', 'trunk-based', 'git-flow', 'release-branch', 'hotfix', 'maintenance'];
+  if (!validStrategies.includes(branching.strategy)) {
+    return {
+      name: 'branching_strategy',
+      status: 'fail',
+      details: `Unknown branching strategy: "${branching.strategy}". Available: ${validStrategies.join(', ')}`,
+    };
+  }
+
+  const details: string[] = [`strategy: ${branching.strategy}`];
+  if (branching.mainBranch) details.push(`mainBranch: ${branching.mainBranch}`);
+  if (branching.developBranch) details.push(`developBranch: ${branching.developBranch}`);
+  if (branching.branchTemplate) details.push(`branchTemplate: ${branching.branchTemplate}`);
+  if (branching.tagTemplate) details.push(`tagTemplate: ${branching.tagTemplate}`);
+
+  return {
+    name: 'branching_strategy',
+    status: 'pass',
+    details: `Branching: ${details.join(', ')}`,
+  };
+}
+
+function checkConventionalCommits(
+  config: any,
+): ValidateResult['checks'][0] {
+  const cc = config?.conventionalCommits;
+  if (!cc) {
+    return {
+      name: 'conventional_commits',
+      status: 'pass',
+      details: 'Conventional Commits: using defaults (enabled, no fallback bump)',
+    };
+  }
+
+  const enabled = cc.enabled !== false;
+  const types = cc.types || {};
+  const fallbackBump = cc.fallbackBump ?? null;
+
+  // Determine which types are overridden vs defaults
+  const overridden: string[] = [];
+  for (const [type, level] of Object.entries(types)) {
+    const defaultLevel = (DEFAULT_BUMP_POLICY as Record<string, string>)[type];
+    if (level !== defaultLevel) {
+      overridden.push(`${type}→${level}`);
+    }
+  }
+
+  const details: string[] = [`enabled: ${enabled}`];
+  if (overridden.length > 0) {
+    details.push(`overridden types: ${overridden.join(', ')}`);
+  }
+  details.push(`fallbackBump: ${fallbackBump === null ? 'none (error on missing CC)' : fallbackBump}`);
+
+  return {
+    name: 'conventional_commits',
+    status: enabled ? 'pass' : 'warn',
+    details: `Conventional Commits: ${details.join(', ')}`,
+  };
+}
+
+function checkChangelog(
+  config: any,
+): ValidateResult['checks'][0] {
+  const cl = config?.changelog;
+  if (!cl) {
+    return {
+      name: 'changelog_config',
+      status: 'pass',
+      details: 'Changelog: not configured (defaults will be used when needed)',
+    };
+  }
+
+  const details: string[] = [];
+
+  if (cl.file) {
+    details.push(`file: ${cl.file}`);
+  }
+
+  const groupTitles = cl.groupTitles || {};
+  const customTitles = Object.entries(groupTitles).filter(
+    ([key, val]) => (DEFAULT_GROUP_TITLES as Record<string, string>)[key] !== val,
+  );
+  if (customTitles.length > 0) {
+    details.push(`custom groupTitles: ${customTitles.map(([k]) => k).join(', ')}`);
+  }
+
+  const excludeTypes: string[] = cl.excludeTypes || [];
+  if (excludeTypes.length > 0) {
+    details.push(`excludeTypes: ${excludeTypes.join(', ')}`);
+  }
+
+  if (cl.includeNonConventional === true) {
+    details.push('includeNonConventional: true');
+  }
+
+  if (details.length === 0) {
+    return {
+      name: 'changelog_config',
+      status: 'pass',
+      details: 'Changelog: configured with defaults',
+    };
+  }
+
+  return {
+    name: 'changelog_config',
+    status: 'pass',
+    details: `Changelog: ${details.join(', ')}`,
+  };
+}
+
+const VALID_LOG_LEVELS = ['debug', 'info', 'warn', 'error'];
+
+function checkLogLevel(
+  config: any,
+): ValidateResult['checks'][0] {
+  const logLevel = config?.logLevel;
+
+  if (logLevel === undefined || logLevel === null) {
+    return {
+      name: 'log_level',
+      status: 'pass',
+      details: 'logLevel: warn (default)',
+    };
+  }
+
+  if (typeof logLevel === 'string' && VALID_LOG_LEVELS.includes(logLevel)) {
+    return {
+      name: 'log_level',
+      status: 'pass',
+      details: `logLevel: ${logLevel}`,
+    };
+  }
+
+  return {
+    name: 'log_level',
+    status: 'fail',
+    details: `Invalid logLevel: "${String(logLevel)}". Must be one of: ${VALID_LOG_LEVELS.join(', ')}`,
+  };
+}
+
+function checkLockTimeout(
+  config: any,
+): ValidateResult['checks'][0] {
+  const lockTimeoutMs = config?.lockTimeoutMs;
+
+  if (lockTimeoutMs === undefined || lockTimeoutMs === null) {
+    return {
+      name: 'lock_timeout',
+      status: 'pass',
+      details: 'lockTimeoutMs: 300000 (default)',
+    };
+  }
+
+  if (typeof lockTimeoutMs === 'number' && Number.isInteger(lockTimeoutMs) && lockTimeoutMs > 0) {
+    return {
+      name: 'lock_timeout',
+      status: 'pass',
+      details: `lockTimeoutMs: ${lockTimeoutMs}`,
+    };
+  }
+
+  return {
+    name: 'lock_timeout',
+    status: 'fail',
+    details: `Invalid lockTimeoutMs: ${String(lockTimeoutMs)}. Must be a positive integer.`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Main entry point
+// ---------------------------------------------------------------------------
+
+/**
+ * Validates configuration and environment without performing any mutations.
+ *
+ * Checks:
+ *   1. Config existence and validity (via configLoader)
+ *   2. Git repository accessibility
+ *   3. Git remote URL match with config
+ *   4. Branching strategy
+ *   5. Conventional Commits
+ *   6. Changelog config
+ *   7. logLevel validity
+ *   8. lockTimeoutMs validity
+ *
+ * Requirements: 7.1, 7.2, 7.3, 7.4, 14.5, 15.2
+ */
+export async function runValidateCommand(
+  opts: { json: boolean; strict?: boolean },
+  deps: ValidateCommandDeps,
+): Promise<ValidateResult> {
+  const allChecks: ValidateResult['checks'] = [];
+  let provenance: ConfigProvenance = {};
+
+  // 1. Config checks
+  const { loadResult, checks: configChecks } = await checkConfig(deps, opts.strict ?? false);
+  allChecks.push(...configChecks);
+
+  if (loadResult) {
+    provenance = loadResult.provenance;
+  }
+
+  // 2. Git repo check
+  const { accessible: gitAccessible, check: gitRepoCheck } = await checkGitRepo(deps.executor);
+  allChecks.push(gitRepoCheck);
+
+  // 3. Git remote check (only if git repo is accessible)
+  if (gitAccessible) {
+    const configUrl = loadResult?.config?.git?.url;
+    const gitRemoteCheck = await checkGitRemote(deps.executor, configUrl);
+    allChecks.push(gitRemoteCheck);
+  } else {
+    allChecks.push({
+      name: 'git_remote',
+      status: 'warn',
+      details: 'Skipped: git repository is not accessible.',
+    });
+  }
+
+  // 4. Branching strategy check
+  if (loadResult) {
+    allChecks.push(checkBranchingStrategy(loadResult.config));
+  }
+
+  // 5. Conventional Commits check
+  if (loadResult) {
+    allChecks.push(checkConventionalCommits(loadResult.config));
+  }
+
+  // 6. Changelog config check
+  if (loadResult) {
+    allChecks.push(checkChangelog(loadResult.config));
+  }
+
+  // 7. logLevel check
+  if (loadResult) {
+    allChecks.push(checkLogLevel(loadResult.config));
+  }
+
+  // 8. lockTimeoutMs check
+  if (loadResult) {
+    allChecks.push(checkLockTimeout(loadResult.config));
+  }
+
+  // Build result
+  const hasFail = allChecks.some((c) => c.status === 'fail');
+  const result: ValidateResult = {
+    valid: !hasFail,
+    checks: allChecks,
+    provenance,
+  };
+
+  // Output via reporter
+  const output = deps.reporter.reportValidation(result);
+  deps.stdout.write(output + '\n');
+
+  return result;
+}

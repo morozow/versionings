@@ -1,10 +1,16 @@
-# versionings
+# Versionings — Semantic Release Platform for Git
 
-A CLI tool that automates semantic versioning workflows for Git repositories. Handles version bumping, branch and tag creation, and optionally pushes changes and opens pull requests on GitHub or Bitbucket.
+[![npm](https://img.shields.io/npm/v/versionings?style=for-the-badge&logo=npm)](https://www.npmjs.com/package/versionings)
+[![License](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge&logo=opensourceinitiative)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%3E%3D18-brightgreen?style=for-the-badge&logo=nodedotjs)](https://nodejs.org)
+[![TypeScript](https://img.shields.io/badge/typescript-strict-blue?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org)
+[![Build](https://img.shields.io/badge/build-esbuild-yellow?style=for-the-badge&logo=esbuild)](https://esbuild.github.io)
+
+CLI tool that automates semantic versioning workflows for Git repositories. Bumps versions, creates branches and tags, and optionally pushes changes and opens pull requests on supported SCM platforms.
 
 ## Installation
 
-```
+```bash
 npm install --global versionings
 ```
 
@@ -12,147 +18,85 @@ Requires Node.js >= 18.
 
 ## Quick Start
 
-1. Create a `version.json` in your project root:
+```bash
+# Create a configuration file
+versionings init
 
-```json
-{
-  "git": {
-    "platform": "github",
-    "url": "https://github.com/your-org/your-repo.git"
-  }
-}
+# Preview what will happen (dry-run)
+versionings plan --semver=patch --branch=my-feature
+
+# Execute the versioning workflow
+versionings release --semver=patch --branch=my-feature
 ```
 
-2. Run:
+See the [Setup Guide](docs/setup-guide.md) for a complete walkthrough.
 
-```
-versionings --semver=patch --branch=fix-login
-```
+## Commands
 
-This bumps the patch version, creates a version branch and tag, and commits the changes.
+| Command | Description | Mutates Repo? |
+|---------|-------------|---------------|
+| `init` | Interactive config wizard | No |
+| `validate` | Check config and environment | No |
+| `plan` | Dry-run: show execution plan | No |
+| `release` | Execute versioning workflow | Yes |
+| `rollback` | Revert last operation | Yes |
+| `doctor` | Diagnose environment | No |
+| `changelog` | Generate changelog from commits | No |
 
-## Configuration
+See the [CLI Reference](docs/cli-reference.md) for full details on each command, parameters, and examples.
 
-The `version.json` file is validated against a JSON Schema on every run. Invalid configuration produces clear error messages with field paths.
+> **Backward compatibility:** Running `versionings --semver=<type> --branch=<name>` without a subcommand is equivalent to `versionings release`.
 
-| Field | Required | Description |
-|---|---|---|
-| `git.platform` | Yes | VCS platform: `github` or `bitbucket` |
-| `git.url` | Yes | Repository URL (HTTPS or SSH) |
-| `git.pr.target` | No | Pull request target branch. Default: `master` |
+## Features
 
-The schema is exported as `version.schema.json` for IDE autocompletion.
+- 6 branching strategies (default, trunk-based, git-flow, release-branch, hotfix, maintenance)
+- 6 SCM platforms (GitHub, GitHub Enterprise, Bitbucket, Bitbucket Server, GitLab, Azure DevOps)
+- Conventional Commits parsing with `--semver=auto`
+- Changelog generation from commit history
+- Interactive and non-interactive modes
+- Config Provenance (`--print-config`)
+- Dry-run with `plan` command
+- Automatic rollback on failure
+- JSON output for CI (`--json`)
+- Structured JSON logging with operation IDs and actor metadata
+- Concurrency lock to prevent parallel releases
+- Action trace with step-level timing
 
-## CLI Usage
-
-```
-versionings --semver=<type> --branch=<name> [options]
-```
-
-| Flag | Type | Default | Description |
-|---|---|---|---|
-| `--semver` | string | required | Semver type: `patch`, `minor`, `major`, `prepatch`, `preminor`, `premajor`, `prerelease` |
-| `--branch` | string | required | Version branch comment (hyphen-case, max 96 chars, no `--`) |
-| `--push` | boolean | `false` | Push branch and tags to remote, generate PR URL |
-| `--preid` | string | — | Prerelease identifier (e.g. `beta`, `rc`) |
-| `--dry-run` | boolean | `false` | Show the full execution plan without making changes |
-| `--json` | boolean | `false` | Output results as structured JSON |
-| `--verbose` | boolean | `false` | Log every shell command before execution |
-
-
-## Workflow
-
-1. Validate CLI arguments and configuration
-2. Check working tree is clean (`git status --porcelain`)
-3. Verify git remote matches `version.json`
-4. Compute next version via `npm version` (probe + undo)
-5. Check artifact uniqueness (branch and tag names, local + remote)
-6. **Dry-run exits here** with the execution plan
-7. Bump version (`npm version`)
-8. Create branch (`version/<type>/<version>/<comment>`)
-9. Create annotated tag (`<version>--<comment>`)
-10. Commit all changes
-11. Push + generate PR URL (if `--push`)
-
-If any step 7–11 fails, all completed steps are automatically rolled back.
+See the [documentation](docs/index.md) for details on each feature.
 
 ## Exit Codes
 
 | Code | Name | Description |
-|---|---|---|
-| 0 | `SUCCESS` | Completed successfully |
-| 1 | `CONFIG_ERROR` | Missing, invalid, or schema-violating `version.json` |
-| 2 | `DIRTY_TREE` | Uncommitted or untracked files in working directory |
-| 3 | `INVALID_ARGS` | Invalid `--semver` value or `--branch` format |
-| 4 | `ARTIFACT_CONFLICT` | Branch or tag already exists (local or remote) |
-| 5 | `COMMAND_FAILED` | Git or npm command returned non-zero exit code |
-| 6 | `NETWORK_ERROR` | Remote repository or network failure |
-| 7 | `INCOMPLETE_ROLLBACK` | Rollback could not fully revert; manual recovery needed |
+|------|------|-------------|
+| 0 | SUCCESS | Successful completion |
+| 1 | CONFIG_ERROR | Configuration error |
+| 2 | DIRTY_TREE | Uncommitted changes |
+| 3 | INVALID_ARGS | Invalid CLI arguments |
+| 4 | ARTIFACT_CONFLICT | Branch or tag already exists |
+| 5 | COMMAND_FAILED | Git/npm command failed |
+| 6 | NETWORK_ERROR | Network error |
+| 7 | INCOMPLETE_ROLLBACK | Rollback could not complete |
+| 8 | NO_OPERATION | Nothing to rollback |
+| 9 | USER_CANCELLED | User cancelled operation |
+| 10 | POLICY_VIOLATION | Branch policy violated |
+| 11 | NO_CONVENTIONAL_COMMITS | No conventional commits for auto-bump |
 
-## Reliability Features
+See the [Failure Matrix](docs/failure-matrix.md) for causes, error examples, and remediation steps.
 
-### Dry Run
+## Documentation
 
-`--dry-run` executes all validation and checks, then outputs the full plan (version, branch, tag, commit message, commands) without modifying anything. Combine with `--json` for machine-readable output.
+Full documentation is available in the [docs/](docs/index.md) directory:
 
-### JSON Output
-
-`--json` produces a single JSON object to stdout (success) or stderr (error). No ANSI colors, no progress messages. Designed for CI script consumption.
-
-Success:
-```json
-{
-  "success": true,
-  "version": "1.2.3",
-  "previousVersion": "1.2.2",
-  "semver": "patch",
-  "branch": "version/patch/1.2.3/fix-login",
-  "tag": "1.2.3--fix-login",
-  "pullRequestUrl": null,
-  "exitCode": 0
-}
-```
-
-Error:
-```json
-{
-  "success": false,
-  "exitCode": 4,
-  "error": {
-    "code": "ARTIFACT_CONFLICT",
-    "message": "Tag already exists: 1.2.3--fix-login",
-    "details": { "type": "tag", "name": "1.2.3--fix-login", "scope": "local" }
-  }
-}
-```
-
-### Rollback
-
-If a mutation step fails (version bump, branch creation, tagging, commit, push), all previously completed steps are automatically reversed in LIFO order. If rollback itself partially fails, the CLI exits with code 7 and prints manual recovery instructions.
-
-### Artifact Uniqueness
-
-Before any mutations, the tool checks that the target branch and tag names don't already exist — locally and (when `--push`) on the remote. Matching is by exact full name, not prefix or substring.
-
-
-## Architecture
-
-TypeScript source, bundled to a single `dist/version.js` via esbuild. Flat module layout:
-
-| Module | Responsibility |
-|---|---|
-| `version.ts` | Thin CLI entry point (argument parsing, DI wiring, process exit) |
-| `pipeline.ts` | Workflow orchestration (all stages as async sequence) |
-| `executor.ts` | Centralized shell command execution with Promise API |
-| `config.validator.ts` | JSON Schema validation of `version.json` via ajv |
-| `rollback.ts` | LIFO rollback journal for mutation steps |
-| `artifact.checker.ts` | Branch/tag uniqueness verification (local + remote) |
-| `reporter.ts` | JSON and human-readable output formatting |
-| `errors.ts` | `VersioningsError` class and `EXIT_CODES` constants |
-| `version.utils.ts` | Branch/tag naming, PR URL generation, semver helpers |
-| `utils.ts` | Legacy utilities (logging, ANSI colors, `get()`) |
-
-All modules use dependency injection. The executor accepts a custom `execFn` for testing; the pipeline receives all dependencies through a `deps` parameter.
+- [Setup Guide](docs/setup-guide.md) — Installation, configuration, and first release
+- [Configuration Reference](docs/configuration-reference.md) — All config fields, sources, and examples
+- [CLI Reference](docs/cli-reference.md) — Commands, flags, and output formats
+- [Failure Matrix](docs/failure-matrix.md) — Exit codes with causes and solutions
+- [Branch Strategy Cookbook](docs/branch-strategy-cookbook.md) — 6 branching strategies with examples
+- [SCM Provider Guide](docs/scm-provider-guide.md) — Platform setup and PR/MR automation
+- [CI/CD Examples](docs/ci-examples.md) — GitHub Actions, GitLab CI, Azure Pipelines, Bitbucket Pipelines
+- [Changelog Format Guide](docs/changelog-format-guide.md) — Conventional Commits and changelog configuration
+- [Operational Hardening Guide](docs/operational-hardening-guide.md) — Structured logging, operation IDs, and concurrency lock
+- [Migration Guide](docs/migration-guide.md) — Upgrading between versions
 
 ## Development
 
@@ -163,35 +107,66 @@ All modules use dependency injection. The executor accepts a custom `execFn` for
 
 ### Commands
 
-```
+```bash
 npm install          # Install dependencies
-npm run build        # Bundle to dist/version.js via esbuild
+npm run build        # Bundle via esbuild + emit type declarations
 npm test             # Run all tests (unit, property, integration, e2e)
+npm run typecheck    # Type-check without emitting
+npm run lint         # Lint all source and test files
+```
+
+### Project Structure
+
+```text
+src/
+├── cli/               # CLI entry point, command router, subcommands
+│   ├── version.ts     # Entry point (compiles to out/dist/index.js)
+│   ├── command.router.ts
+│   ├── interaction.manager.ts
+│   └── commands/      # init, validate, plan, release, rollback, doctor, changelog
+├── core/              # Pipeline, executor, errors, rollback, reporter
+│   ├── pipeline.ts    # Workflow orchestration
+│   ├── executor.ts    # Shell command execution (Promise-based, DI)
+│   ├── errors.ts      # Exit codes (0–11) and VersioningsError
+│   ├── rollback.ts    # Rollback manager
+│   ├── reporter.ts    # JSON / human-readable output
+│   ├── structured.logger.ts  # Structured JSON logging
+│   ├── lock.manager.ts       # Concurrency lock
+│   ├── action.tracer.ts      # Step timing trace
+│   └── actor.resolver.ts     # Git user / CI actor metadata
+├── config/            # Configuration loading, merging, validation
+├── scm/               # SCM provider abstraction and PR/MR creation
+│   ├── providers/     # GitHub, GitLab, Bitbucket, Azure DevOps
+│   └── ...
+├── branching/         # Branching strategies and policy checker
+│   ├── strategies/    # default, trunk-based, git-flow, release, hotfix, maintenance
+│   └── ...
+├── versioning/        # Conventional commits, auto-bump, changelog
+└── utils/             # Shared utilities (ANSI colors, helpers)
 ```
 
 ### Test Structure
 
-```
+```text
 __tests__/
-├── unit/              # Module-level tests with mocks
+├── unit/              # Module-level tests with mocks (mirrored by domain)
+│   ├── cli/
+│   ├── core/
+│   ├── config/
+│   ├── scm/
+│   ├── branching/
+│   ├── versioning/
+│   └── utils/
 ├── properties/        # Property-based tests (fast-check, 100+ iterations each)
+│   ├── core/
+│   ├── config/
+│   ├── scm/
+│   ├── branching/
+│   └── versioning/
 ├── integration/       # Full pipeline with real git repos (no mocks)
 ├── e2e/               # CLI as child process with real git repos
 └── helpers/           # Test utilities (repo fixture creation)
 ```
-
-- **Unit tests**: Each public module has dedicated tests with mock dependencies
-- **Property-based tests**: 16 correctness properties verified via fast-check (dry-run safety, rollback ordering, output normalization, JSON completeness, artifact matching, etc.)
-- **Integration tests**: Full pipeline execution in isolated tmpdir git repositories with real executor, real filesystem, real git — no mocks
-- **E2E tests**: `node dist/version.js` invoked as a child process against real git repos, verifying exit codes, stdout/stderr, and actual git state
-
-### CI
-
-GitHub Actions workflow (`.github/workflows/ci.yml`):
-- Matrix: Node.js 18 + latest LTS
-- Platforms: Ubuntu + macOS
-- Steps: install → lint (ESLint) → unit tests → integration tests → e2e tests
-- PR merge blocked on any failure
 
 ## License
 

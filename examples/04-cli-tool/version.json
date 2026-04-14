@@ -1,0 +1,14 @@
+{
+  "git": {
+    "platform": "github",
+    "url": "https://github.com/your-org/04-cli-tool.git",
+    "branching": {
+      "strategy": "release-branch"
+    },
+    "pr": {
+      "target": "main",
+      "draft": true,
+      "template": ".github/PULL_REQUEST_TEMPLATE.md"
+    }
+  }
+}

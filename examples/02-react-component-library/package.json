@@ -1,0 +1,22 @@
+{
+  "name": "02-react-component-library",
+  "version": "1.0.0",
+  "description": "React UI component library — trunk-based workflow with conventional commits",
+  "main": "src/index.js",
+  "scripts": {
+    "validate": "versionings validate",
+    "plan": "versionings plan --semver=auto --branch=release",
+    "release": "versionings release --semver=auto --branch=release --push"
+  },
+  "dependencies": {
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0"
+  },
+  "devDependencies": {
+    "versionings": "^0.1.0"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0",
+    "react-dom": ">=18.0.0"
+  }
+}

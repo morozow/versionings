@@ -1,0 +1,39 @@
+name: Enterprise Release
+
+on:
+  push:
+    branches: [develop]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - run: npm install
+
+      - name: Validate (strict)
+        run: npx versionings validate --strict --json
+
+      - name: Print Config Provenance
+        run: npx versionings release --print-config
+
+      - name: Release
+        id: release
+        run: |
+          npx versionings release --semver=auto --branch=enterprise-release --push --ci --json 2>release-logs.jsonl 1>release-result.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Operation Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: versionings-logs
+          path: release-logs.jsonl

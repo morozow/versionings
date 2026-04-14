@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'">
+  <title>Electron Desktop App</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+  <div class="container">
+    <h1>Electron Desktop App</h1>
+    <p class="subtitle">GitHub Enterprise &middot; Hotfix Strategy</p>
+
+    <section class="info-block">
+      <h2>Application Version</h2>
+      <p id="app-version">—</p>
+      <button id="btn-version">Get Version</button>
+    </section>
+
+    <section class="info-block">
+      <h2>System Information</h2>
+      <dl id="system-info">
+        <dt>Platform</dt>
+        <dd id="info-platform">—</dd>
+        <dt>Architecture</dt>
+        <dd id="info-arch">—</dd>
+        <dt>Memory (Total)</dt>
+        <dd id="info-mem-total">—</dd>
+        <dt>Memory (Free)</dt>
+        <dd id="info-mem-free">—</dd>
+      </dl>
+      <button id="btn-sysinfo">Get System Info</button>
+    </section>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+
+</html>
