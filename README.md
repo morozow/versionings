@@ -1,4 +1,4 @@
-# versionings
+# Versionings — Semantic Release Platform for Git
 
 [![npm](https://img.shields.io/npm/v/versionings?style=for-the-badge&logo=npm)](https://www.npmjs.com/package/versionings)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge&logo=opensourceinitiative)](LICENSE)
