@@ -12,9 +12,18 @@
 # 5. Runs ALL E2E tests with CLI_PATH pointing to the packed binary
 # 6. Cleans up
 #
-# Usage: npm run test:e2e:pack
+# Usage:
+#   npm run test:e2e:pack                  (default: --forceExit enabled)
+#   npm run test:e2e:pack -- --no-force    (disable --forceExit for clean exit in prepublish)
 
 set -euo pipefail
+
+FORCE_EXIT="--forceExit"
+for arg in "$@"; do
+  if [ "$arg" = "--no-force" ]; then
+    FORCE_EXIT=""
+  fi
+done
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PACK_DIR="$(mktemp -d)"
@@ -51,7 +60,7 @@ VERSIONINGS_CLI_PATH="$CLI_BIN" npx jest \
   --testPathPattern='__tests__/e2e/' \
   --testPathIgnorePatterns='pack.integrity' \
   --no-coverage \
-  --forceExit
+  $FORCE_EXIT
 
 echo ""
 echo "✓ All E2E tests passed against npm-packed binary."
