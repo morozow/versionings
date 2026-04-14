@@ -1,6 +1,6 @@
 {
   "name": "versionings",
-  "version": "1.0.4",
+  "version": "1.0.3",
   "description": "Semantic versioning automation CLI for Git repositories — bumps versions, creates branches and tags, opens pull requests.",
   "main": "out/dist/index.js",
   "bin": {
@@ -24,7 +24,7 @@
     "test:e2e:pack": "bash scripts/test-pack.sh",
     "test:properties": "jest --testPathPattern='__tests__/properties/' --no-coverage",
     "test:ci": "jest --ci --forceExit",
-    "prepublishOnly": "npm run clean && npm run build"
+    "prepublish": "npm run clean && npm run build && bash scripts/test-pack.sh --no-force"
   },
   "keywords": [
     "version",
