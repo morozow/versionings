@@ -1,6 +1,6 @@
 {
   "name": "versionings",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Semantic versioning automation CLI for Git repositories — bumps versions, creates branches and tags, opens pull requests.",
   "main": "out/dist/index.js",
   "bin": {
