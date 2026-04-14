@@ -151,6 +151,15 @@ describe('Property 3: Priority and deep merge', () => {
             if (val === undefined) continue;
             const currentPath = [...path, key];
 
+            // If B has a scalar at this key, it replaces A's entire subtree — skip
+            if (bObj && key in bObj && bObj[key] !== undefined) {
+              const bVal = bObj[key];
+              if (typeof bVal !== 'object' || bVal === null || Array.isArray(bVal)) {
+                // B's scalar wins over A's value (object or scalar) — nothing to check
+                continue;
+              }
+            }
+
             if (typeof val === 'object' && val !== null && !Array.isArray(val)) {
               const bSub = bObj && typeof bObj[key] === 'object' && bObj[key] !== null ? bObj[key] : {};
               const mSub = mergedObj && typeof mergedObj[key] === 'object' ? mergedObj[key] : {};
