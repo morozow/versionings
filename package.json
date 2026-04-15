@@ -4,7 +4,7 @@
   "description": "Semantic versioning automation CLI for Git repositories — bumps versions, creates branches and tags, opens pull requests.",
   "main": "out/dist/index.js",
   "bin": {
-    "versionings": "./out/dist/index.js"
+    "versionings": "out/dist/index.js"
   },
   "types": "out/tsc/index.d.ts",
   "files": [
@@ -42,7 +42,7 @@
   "homepage": "https://github.com/morozow/versionings",
   "repository": {
     "type": "git",
-    "url": "https://github.com/morozow/versionings.git"
+    "url": "git+https://github.com/morozow/versionings.git"
   },
   "engines": {
     "node": ">=18.0.0"
